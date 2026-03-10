@@ -1,0 +1,111 @@
+1️⃣ Users
+Admin user
+{
+  "email": "admin@airflourish.com",
+  "first_name": "Admin",
+  "last_name": "User",
+  "password": "Admin1234!",
+  "user_type": "admin",
+  "phone_number": "08012345678",
+  "country": "Nigeria"
+}
+Regular user
+{
+  "email": "john.doe@example.com",
+  "first_name": "John",
+  "last_name": "Doe",
+  "password": "John1234!",
+  "user_type": "regular",
+  "phone_number": "08098765432",
+  "country": "Nigeria"
+}
+2️⃣ Flight Booking
+{
+  "departure_city": "Lagos",
+  "arrival_city": "London",
+  "departure_date": "2026-03-15",
+  "return_date": "2026-03-25",
+  "airline": "British Airways",
+  "passengers": 2,
+  "flight_offer": {"offer_id": "FAKE-OFFER-123"},
+  "travelers": [
+    {"first_name": "John", "last_name": "Doe", "age": 30, "passport_number": "A1234567"},
+    {"first_name": "Jane", "last_name": "Doe", "age": 28, "passport_number": "B9876543"}
+  ],
+  "total_price": 1200.00,
+  "currency": "USD"
+}
+3️⃣ Hotel
+Admin creates a hotel
+{
+  "hotel_name": "Airflourish Hotel",
+  "city": "Lagos",
+  "address": "1 Christ Embassy Way",
+  "price_per_night": 500.00,
+  "currency": "NGN",
+  "images": ["https://placekitten.com/400/300"],
+  "description": "Luxury hotel with free breakfast"
+}
+User books hotel
+{
+  "hotel_id": 1,
+  "check_in": "2026-03-15",
+  "check_out": "2026-03-20",
+  "adults": 2,
+  "rooms": 1
+}
+4️⃣ Transport
+Admin creates transport
+{
+  "transport_name": "Airflourish Van",
+  "vehicle_type": "van",
+  "pickup_location": "Lagos Airport",
+  "dropoff_location": "Victoria Island",
+  "price_per_passenger": 2000.00,
+  "currency": "NGN"
+}
+User books transport
+{
+  "transport_id": 1,
+  "passengers": 3,
+  "special_requests": "Need child seat"
+}
+Transport search
+GET /transports/search/?pickup=Lagos&dropoff=Victoria&date=2026-03-15
+5️⃣ Visa
+User applies for visa
+{
+  "flight": 1,
+  "destination_country": "United Kingdom",
+  "visa_type": "Tourist",
+  "appointment_date": "2026-03-10",
+  "passport_scan": null,
+  "photo": null,
+  "supporting_docs": null
+}
+Admin approves visa
+POST /visas/approve/1/
+{
+  "action": "approve"
+}
+Admin rejects visa
+POST /visas/approve/2/
+{
+  "action": "reject"
+}
+6️⃣ Payment
+{
+  "booking": 1,
+  "tx_ref": "TX1234567890",
+  "amount": 1200.00,
+  "currency": "USD",
+  "payment_method": "Card",
+  "transaction_id": "TRX987654321",
+  "status": "pending",
+  "raw_response": {"payment_gateway": "Flutterwave"}
+}
+7️⃣ Booking cancellation
+POST /bookings/cancel/1/
+{
+  "reason": "Change of plans"
+}

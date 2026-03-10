@@ -1,0 +1,125 @@
+Create Users
+Admin
+curl -X POST http://127.0.0.1:8000/users/ \
+-H "Content-Type: application/json" \
+-d '{
+  "email": "admin@airflourish.com",
+  "first_name": "Admin",
+  "last_name": "User",
+  "password": "Admin1234!",
+  "user_type": "admin",
+  "phone_number": "08012345678",
+  "country": "Nigeria"
+}'
+Regular User
+curl -X POST http://127.0.0.1:8000/users/ \
+-H "Content-Type: application/json" \
+-d '{
+  "email": "john.doe@example.com",
+  "first_name": "John",
+  "last_name": "Doe",
+  "password": "John1234!",
+  "user_type": "regular",
+  "phone_number": "08098765432",
+  "country": "Nigeria"
+}'
+2️⃣ Create a Booking (Regular user)
+curl -X POST http://127.0.0.1:8000/bookings/ \
+-H "Authorization: Token <USER_TOKEN>" \
+-H "Content-Type: application/json" \
+-d '{
+  "service_type": "flight",
+  "total_price": 1200.00,
+  "currency": "USD"
+}'
+3️⃣ Search Flights
+curl -X GET "http://127.0.0.1:8000/bookings/search-flights/?origin=Lagos&destination=London&departure_date=2026-03-15&return_date=2026-03-25"
+4️⃣ Hotel
+Admin creates hotel
+'{
+  "hotel_name": "Airflourish Hotel",
+  "city": "Lagos",
+  "address": "1 Christ Embassy Way",
+  "price_per_night": 500.00,
+  "currency": "NGN",
+  "images": ["https://placekitten.com/400/300"],
+  "description": "Luxury hotel with free breakfast"
+}'
+
+
+User books hotel
+curl -X POST http://127.0.0.1:8000/hotel-bookings/ \
+-H "Authorization: Token <USER_TOKEN>" \
+-H "Content-Type: application/json" \
+-d '{
+  "hotel_id": 1,
+  "check_in": "2026-03-15",
+  "check_out": "2026-03-20",
+  "adults": 2,
+  "rooms": 1
+}'
+5️⃣ Transport
+Admin creates transport
+curl -X POST http://127.0.0.1:8000/transports/admin/ \
+-H "Authorization: Token <ADMIN_TOKEN>" \
+-H "Content-Type: application/json" \
+-d '{
+  "transport_name": "Airflourish Van",
+  "vehicle_type": "van",
+  "pickup_location": "Lagos Airport",
+  "dropoff_location": "Victoria Island",
+  "price_per_passenger": 2000.00,
+  "currency": "NGN"
+}'
+User books transport
+curl -X POST http://127.0.0.1:8000/transports/booking/ \
+-H "Authorization: Token <USER_TOKEN>" \
+-H "Content-Type: application/json" \
+-d '{
+  "transport_id": 1,
+  "passengers": 3,
+  "special_requests": "Need child seat"
+}'
+Transport search
+curl -X GET "http://127.0.0.1:8000/transports/search/?pickup=Lagos&dropoff=Victoria&date=2026-03-15" \
+-H "Authorization: Token <USER_TOKEN>"
+6️⃣ Visa
+Apply for visa
+curl -X POST http://127.0.0.1:8000/visas/ \
+-H "Authorization: Token <USER_TOKEN>" \
+-H "Content-Type: application/json" \
+-d '{
+  "flight": 1,
+  "destination_country": "United Kingdom",
+  "visa_type": "Tourist",
+  "appointment_date": "2026-03-10"
+}'
+Approve visa (Admin)
+curl -X POST http://127.0.0.1:8000/visas/approve/1/ \
+-H "Authorization: Token <ADMIN_TOKEN>" \
+-H "Content-Type: application/json" \
+-d '{"action": "approve"}'
+Reject visa (Admin)
+curl -X POST http://127.0.0.1:8000/visas/approve/2/ \
+-H "Authorization: Token <ADMIN_TOKEN>" \
+-H "Content-Type: application/json" \
+-d '{"action": "reject"}'
+7️⃣ Payment
+curl -X POST http://127.0.0.1:8000/payments/ \
+-H "Authorization: Token <USER_TOKEN>" \
+-H "Content-Type: application/json" \
+-d '{
+  "booking": 1,
+  "tx_ref": "TX1234567890",
+  "amount": 1200.00,
+  "currency": "USD",
+  "payment_method": "Card",
+  "transaction_id": "TRX987654321",
+  "status": "pending",
+  "raw_response": {"payment_gateway": "Flutterwave"}
+}'
+8️⃣ Cancel Booking
+curl -X POST http://127.0.0.1:8000/bookings/cancel/1/ \
+-H "Authorization: Token <USER_TOKEN>" \
+-H "Content-Type: application/json" \
+-d '{"reason": "Change of plans"}'

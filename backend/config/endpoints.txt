@@ -1,0 +1,52 @@
+Users
+api/users/register - post
+api/users/profile - get
+api/users/logout - post
+api/users/token - post login user
+api/users/token/refresh - post
+
+Booking Endpoints (bookings app)
+Endpoint	Method	Description	Permissions
+/bookings/	GET	List all bookings (admin sees all, regular users see their own)	Authenticated
+/bookings/	POST	Create a new booking (auto generates reference_code)	Authenticated
+/bookings/{id}/	PUT/PATCH	Update booking status (admin only)	Admin only
+/bookings/cancel/{booking_id}/	POST	Cancel a booking with optional reason	Authenticated
+/bookings/search-flights/	GET	Search flights via Amadeus API (origin, destination, departure_date, optional return_date)	Public / Authenticated?
+/bookings/create/	POST	(Throttled to 10/min) Generic booking creation	Authenticated
+2️⃣ Flight Endpoints (flights app)
+Endpoint	Method	Description	Permissions
+/flights/	GET	List all flight bookings (admin sees all)	Authenticated
+/flights/	POST	Create a flight booking (links to unified booking)	Authenticated
+/flights/secure-book/	POST	Initiate payment for a flight booking	Authenticated
+/flights/verify-payment/	POST	Verify payment and confirm flight booking	Authenticated
+3️⃣ Hotel Endpoints (hotels app)
+Endpoint	Method	Description	Permissions
+/hotels/	GET	List all hotels (admin sees all, regular users may filter)	Authenticated
+/hotels/	POST	Admin can create a hotel	Admin only
+/hotels/{id}/	PUT/PATCH	Update hotel details	Admin only
+/hotels/{id}/	DELETE	Delete a hotel	Admin only
+/hotel-bookings/	POST	User books a hotel (admin-created or external API)	Authenticated
+4️⃣ Transport Endpoints (transport app)
+Endpoint	Method	Description	Permissions
+/transports/	GET	List all transport services	Authenticated
+/transports/	POST	Admin creates transport service	Authenticated (admin)
+/transports/admin/	GET	List transport services (admin-only)	Admin only
+/transports/admin/	POST	Admin creates transport	Admin only
+/transports/booking/	POST	Regular user books a transport	Authenticated
+/transports/search/	GET	Search transport by pickup, dropoff, date	Authenticated
+5️⃣ Visa Endpoints (visas app)
+Endpoint	Method	Description	Permissions
+/visas/	GET	List all visa applications for the user	Authenticated
+/visas/	POST	Create a visa application (links flight and booking)	Authenticated
+/visas/{id}/	PUT/PATCH	Update visa application	Authenticated
+/visas/approve/{visa_id}/	POST	Admin approves/rejects visa (`action=approve	reject`)
+6️⃣ Payment Endpoints (payments app)
+Endpoint	Method	Description	Permissions
+/payments/	GET	List payments	Authenticated
+/payments/	POST	Create payment record (for testing)	Authenticated
+/payments/{id}/	GET	Get single payment details	Authenticated
+
+
+POST /api/payments/card/initiate/
+POST /api/payments/bank-transfer/initiate/
+POST /api/payments/webhook/flutterwave/

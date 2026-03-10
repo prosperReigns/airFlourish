@@ -1,0 +1,444 @@
+from decimal import Decimal
+
+from django.db import transaction
+from django.utils import timezone
+from django.utils.decorators import method_decorator
+from rest_framework import permissions, status, viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from drf_yasg.utils import swagger_auto_schema
+
+from app.payments.models import Payment
+from app.services.amadeus import AmadeusService
+from app.services.booking_engine import BookingEngine
+from app.services.flutterwave import FlutterwaveService
+from app.services.reference_generator import generate_booking_reference
+from .models import FlightBooking
+from .serializers import FlightBookingSerializer
+
+@method_decorator(
+    name="list",
+    decorator=swagger_auto_schema(operation_description="List flight bookings."),
+)
+@method_decorator(
+    name="retrieve",
+    decorator=swagger_auto_schema(operation_description="Retrieve a flight booking by ID."),
+)
+@method_decorator(
+    name="create",
+    decorator=swagger_auto_schema(operation_description="Create a flight booking."),
+)
+@method_decorator(
+    name="update",
+    decorator=swagger_auto_schema(operation_description="Update a flight booking."),
+)
+@method_decorator(
+    name="partial_update",
+    decorator=swagger_auto_schema(operation_description="Partially update a flight booking."),
+)
+@method_decorator(
+    name="destroy",
+    decorator=swagger_auto_schema(operation_description="Delete a flight booking."),
+)
+class FlightBookingViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing flight bookings. Regular users can only see and manage their own flight bookings, while admin users can see and manage all flight bookings. This viewset allows users to create new flight bookings by providing the necessary flight details and handles the retrieval, updating, and deletion of flight bookings based on user permissions.
+    Expected URL for listing flight bookings: /flight-bookings/
+    Expected URL for retrieving a flight booking: /flight-bookings/<booking_id>/
+    Expected URL for creating a flight booking: /flight-bookings/
+    Expected URL for updating a flight booking: /flight-bookings/<booking_id>/
+    Expected URL for deleting a flight booking: /flight-bookings/<booking_id>/
+    Expected request data for creating a flight booking:
+    {
+        "departure_city": "City of departure",
+        "arrival_city": "City of arrival",
+        "departure_date": "Date of departure",
+        "return_date": "Date of return",
+        "airline": "Airline name",
+        "passengers": 1,
+        "flight_offer": { ... },  // Flight offer details from Amadeus
+        "travelers": [ ... ],  // Traveler details
+        "total_price": 100.00,
+        "currency": "USD"
+    }
+    """
+    queryset = FlightBooking.objects.all()
+    serializer_class = FlightBookingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Admin users can see all flight bookings, while regular users can only see their own flight bookings. This method overrides the default queryset to filter the flight bookings based on the user's permissions.
+        Expected URL for listing flight bookings: /flight-bookings/
+        """
+        if getattr(self, 'swagger_fake_view', False):
+            return FlightBooking.objects.none()
+        user = self.request.user
+
+        # admin sees all bookings
+        if getattr(user, "user_type", None) == "admin":
+            return FlightBooking.objects.all()
+
+        # Return flights linked to bookings of the logged-in user
+        return FlightBooking.objects.filter(booking__user=user)
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Expected request data:
+        {
+            "departure_city": "City of departure",
+            "arrival_city": "City of arrival",
+            "departure_date": "Date of departure",
+            "return_date": "Date of return",
+            "airline": "Airline name",
+            "passengers": 1,
+            "flight_offer": { ... },  // Flight offer details from Amadeus
+            "travelers": [ ... ],  // Traveler details
+            "total_price": 100.00,
+            "currency": "USD"
+        }
+        """
+        flight_offer = request.data.get("flight_offer")
+        travelers = request.data.get("travelers")
+        total_price = request.data.get("total_price")
+        currency = request.data.get("currency", "NGN")
+
+        if not flight_offer or not travelers:
+            return Response(
+                {"error": "flight_offer and travelers are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Book with Amadeus + Create unified booking
+        booking, _amadeus_response = BookingEngine.book_flight(
+            user=request.user,
+            flight_offer=flight_offer,
+            travelers=travelers,
+            total_price=total_price,
+            currency=currency,
+        )
+
+        # Create FlightBooking record
+        flight_booking = FlightBooking.objects.create(
+            booking=booking,
+            departure_city=request.data["departure_city"],
+            arrival_city=request.data["arrival_city"],
+            departure_date=request.data["departure_date"],
+            return_date=request.data.get("return_date"),
+            airline=request.data["airline"],
+            passengers=request.data.get("passengers", 1),
+        )
+
+        serializer = self.get_serializer(flight_booking)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class SecureFlightBookingView(APIView):
+    """Endpoint for securely booking a flight. This view handles the entire process of booking a flight, including repricing the flight offer, initiating payment with Flutterwave, creating a unified booking, and returning a payment link to the frontend. It expects the flight offer and traveler details in the request data, and it ensures that all operations are performed atomically to maintain data integrity.
+    Expected request data:
+    {
+        "flight_offer": { ... },  // Flight offer details from Amadeus
+        "travelers": [ ... ],  // Traveler details
+        "departure_city": "City of departure",
+        "arrival_city": "City of arrival",
+        "departure_date": "Date of departure",
+        "return_date": "Date of return",
+        "airline": "Airline name",
+        "passengers": 1
+    }
+    Expected response data on success:
+    {
+        "payment_link": "https://flutterwave.com/pay/unique_payment_link",
+        "tx_ref": "unique_transaction_reference",
+        "booking_id": 1
+    }
+    Expected response data on failure:
+    {
+        "error": "Description of the error",
+        "details": { ... }  // Additional details about the error
+    }
+    """
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    @swagger_auto_schema(operation_description="Initiate secure flight booking and return payment link.")
+    def post(self, request):
+        """Endpoint for securely booking a flight. This view handles the entire process of booking a flight, including repricing the flight offer, initiating payment with Flutterwave, creating a unified booking, and returning a payment link to the frontend. It expects the flight offer and traveler details in the request data, and it ensures that all operations are performed atomically to maintain data integrity.
+        Expected request data:
+        {
+            "flight_offer": { ... },  // Flight offer details from Amadeus
+            "travelers": [ ... ],  // Traveler details
+            "departure_city": "City of departure",
+            "arrival_city": "City of arrival",
+            "departure_date": "Date of departure",
+            "return_date": "Date of return",
+            "airline": "Airline name",
+            "passengers": 1
+        }
+        Expected response data on success:
+        {
+            "payment_link": "https://flutterwave.com/pay/unique_payment_link",
+            "tx_ref": "unique_transaction_reference",
+            "booking_id": 1
+        }
+        Expected response data on failure:
+        {
+            "error": "Description of the error",
+            "details": { ... }  // Additional details about the error
+        }
+        """
+        flight_offer = request.data.get("flight_offer")
+        travelers = request.data.get("travelers")
+        if not flight_offer or not travelers:
+            return Response(
+                {"error": "flight_offer and travelers are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Reprice flight
+        priced_offer = AmadeusService.reprice_flight(flight_offer)
+        try:
+            confirmed_price = priced_offer["flightOffers"][0]["price"]["total"]
+            currency = priced_offer["flightOffers"][0]["price"]["currency"]
+        except (KeyError, IndexError, TypeError):
+            return Response(
+                {"error": "Unable to reprice flight"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Initiate payment
+        tx_ref = generate_booking_reference("pay")
+        payment_response = FlutterwaveService().initiate_card_payment(
+            amount=confirmed_price,
+            currency=currency,
+            customer_email=request.user.email,
+            tx_ref=tx_ref,
+        )
+        if payment_response.get("status") == "error":
+            return Response(
+                {"error": "Payment initiation failed", "details": payment_response.get("message")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        booking = BookingEngine.create_booking(
+            user=request.user,
+            service_type="flight",
+            total_price=confirmed_price,
+            currency=currency,
+        )
+
+        meta = {
+            "flight_offer": flight_offer,
+            "travelers": travelers,
+            "departure_city": request.data.get("departure_city"),
+            "arrival_city": request.data.get("arrival_city"),
+            "departure_date": request.data.get("departure_date"),
+            "return_date": request.data.get("return_date"),
+            "airline": request.data.get("airline"),
+            "passengers": request.data.get("passengers"),
+        }
+
+        Payment.objects.create(
+            booking=booking,
+            tx_ref=tx_ref,
+            amount=confirmed_price,
+            currency=currency,
+            payment_method="card",
+            status="pending",
+            raw_response={"meta": meta},
+        )
+
+        # Return payment link to frontend
+        return Response(
+            {
+                "payment_link": payment_response.get("data", {}).get("link"),
+                "tx_ref": tx_ref,
+                "booking_id": booking.id,
+            }
+        )
+
+
+class VerifyFlightPaymentView(APIView):
+    """Endpoint for verifying flight booking payments. This view checks the payment status with Flutterwave using the transaction reference (tx_ref), updates the payment record accordingly, and if successful, creates the flight order with Amadeus. It also handles various error scenarios such as payment verification failure, amount mismatch, and currency mismatch.
+    Expected request data:
+    {
+        "tx_ref": "unique_transaction_reference",
+        "flight_offer": { ... },  // Optional, can also be retrieved from payment meta
+        "travelers": [ ... ]  // Optional, can also be retrieved from payment meta
+        // other optional fields for flight details...
+    }
+    Expected response data on success:
+    {
+        "message": "Flight booked successfully",
+        "booking_id": 1
+    }
+    Expected response data on failure:
+    {
+        "error": "Payment verification failed",
+        "details": { ... }  // Details from Flutterwave verification response
+    }
+    """
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    @swagger_auto_schema(operation_description="Verify payment and finalize flight booking.")
+    def post(self, request):
+        """Verifies the payment for a flight booking using the transaction reference (tx_ref). This endpoint checks the payment status with Flutterwave, updates the payment record, and if successful, creates the flight order with Amadeus. It also handles various error scenarios such as payment verification failure, amount mismatch, and currency mismatch.
+        Expected request data:
+        {
+            "tx_ref": "unique_transaction_reference",
+            "flight_offer": { ... },  // Optional, can also be retrieved from payment meta
+            "travelers": [ ... ]  // Optional, can also be retrieved from payment meta
+            // other optional fields for flight details...
+        }
+        Expected response data on success:
+        {
+            "message": "Flight booked successfully",
+            "booking_id": 1
+        }
+        Expected response data on failure:
+        {
+            "error": "Payment verification failed",
+            "details": { ... }  // Details from Flutterwave verification response
+        }
+        """
+
+        tx_ref = request.data.get("tx_ref")
+        if not tx_ref:
+            return Response({"error": "tx_ref is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            payment = Payment.objects.select_for_update().get(
+                tx_ref=tx_ref,
+                booking__user=request.user,
+            )
+        except Payment.DoesNotExist:
+            return Response({"error": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if payment.status == "succeeded":
+            return Response(
+                {"message": "Already verified", "booking_id": payment.booking.id},
+                status=status.HTTP_200_OK,
+            )
+
+        verification = FlutterwaveService().verify_payment(tx_ref)
+        if verification.get("status") != "success":
+            payment.status = "failed"
+            payment.raw_response = {
+                "meta": (payment.raw_response or {}).get("meta", {}),
+                "verification": verification,
+            }
+            payment.save()
+            BookingEngine.update_status(payment.booking, "failed")
+            return Response(
+                {"error": "Payment verification failed", "details": verification},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        verification_data = verification.get("data", {})
+        if verification_data.get("status") != "successful":
+            payment.status = "failed"
+            payment.raw_response = {
+                "meta": (payment.raw_response or {}).get("meta", {}),
+                "verification": verification,
+            }
+            payment.save()
+            BookingEngine.update_status(payment.booking, "failed")
+            return Response({"error": "Payment not successful"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            verified_amount = Decimal(str(verification_data.get("amount")))
+        except Exception:
+            verified_amount = None
+
+        if verified_amount is None or verified_amount != payment.amount:
+            payment.status = "failed"
+            payment.raw_response = {
+                "meta": (payment.raw_response or {}).get("meta", {}),
+                "verification": verification,
+            }
+            payment.save()
+            BookingEngine.update_status(payment.booking, "failed")
+            return Response({"error": "Payment amount mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if verification_data.get("currency") != payment.currency:
+            payment.status = "failed"
+            payment.raw_response = {
+                "meta": (payment.raw_response or {}).get("meta", {}),
+                "verification": verification,
+            }
+            payment.save()
+            BookingEngine.update_status(payment.booking, "failed")
+            return Response({"error": "Payment currency mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+
+        payment.status = "succeeded"
+        payment.flutterwave_charge_id = str(verification_data.get("id"))
+        payment.paid_at = timezone.now()
+        meta = (payment.raw_response or {}).get("meta", {})
+        payment.raw_response = {
+            "meta": meta,
+            "verification": verification,
+        }
+        payment.save()
+
+        BookingEngine.attach_payment(
+            payment.booking,
+            "confirmed",
+            payment_reference=str(verification_data.get("id")),
+        )
+
+        if FlightBooking.objects.filter(booking=payment.booking).exists():
+            return Response(
+                {"message": "Flight booked successfully", "booking_id": payment.booking.id},
+                status=status.HTTP_200_OK,
+            )
+
+        flight_offer = request.data.get("flight_offer") or meta.get("flight_offer")
+        travelers = request.data.get("travelers") or meta.get("travelers")
+        if not flight_offer or not travelers:
+            return Response(
+                {"error": "flight_offer and travelers are required to create the flight order"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        flight_order = AmadeusService.create_flight_order(
+            flight_offer,
+            travelers,
+        )
+
+        if flight_order.get("id"):
+            payment.booking.external_service_id = flight_order["id"]
+            payment.booking.save()
+
+        def get_detail(field_name, default=None):
+            value = request.data.get(field_name)
+            if value not in (None, ""):
+                return value
+            return meta.get(field_name, default)
+
+        departure_city = get_detail("departure_city")
+        arrival_city = get_detail("arrival_city")
+        departure_date = get_detail("departure_date")
+        airline = get_detail("airline")
+        passengers = get_detail("passengers", 1)
+        return_date = get_detail("return_date")
+
+        if not departure_city or not arrival_city or not departure_date or not airline:
+            return Response(
+                {"error": "departure_city, arrival_city, departure_date, and airline are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        FlightBooking.objects.create(
+            booking=payment.booking,
+            departure_city=departure_city,
+            arrival_city=arrival_city,
+            departure_date=departure_date,
+            return_date=return_date,
+            airline=airline,
+            passengers=int(passengers) if passengers is not None else 1,
+        )
+
+        return Response(
+            {"message": "Flight booked successfully", "booking_id": payment.booking.id},
+            status=status.HTTP_201_CREATED,
+        )
