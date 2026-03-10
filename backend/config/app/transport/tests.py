@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 
 from app.bookings.models import Booking
 from app.transport.models import TransportService
+from app.transport.serializers import TransportServiceSerializer
 
 
 class TransportFlowTests(TestCase):
@@ -405,4 +406,178 @@ class AdminTransportDetailTests(TestCase):
         self.assertEqual(response.data["dropoff_location"], "Island")
         self.assertEqual(response.data["price_per_passenger"], "50.00")
         self.assertEqual(response.data["currency"], "NGN")
+
+
+class TransportModelTests(TestCase):
+    def test_transport_service_str_and_defaults(self):
+        transport = TransportService.objects.create(
+            vehicle_type="sedan",
+            transport_name="Model Sedan",
+            pickup_location="Lagos",
+            dropoff_location="Island",
+            price_per_passenger=Decimal("60.00"),
+            currency="NGN",
+        )
+        self.assertEqual(str(transport), "Model Sedan (sedan)")
+        self.assertEqual(transport.passengers, 1)
+
+
+class TransportSerializerTests(TestCase):
+    def test_transport_service_serializer_outputs_expected_fields(self):
+        transport = TransportService.objects.create(
+            vehicle_type="suv",
+            transport_name="Serializer SUV",
+            pickup_location="Lagos",
+            dropoff_location="Ikeja",
+            price_per_passenger=Decimal("80.00"),
+            currency="NGN",
+            passengers=3,
+        )
+        data = TransportServiceSerializer(transport).data
+        self.assertEqual(data["vehicle_type"], "suv")
+        self.assertEqual(data["transport_name"], "Serializer SUV")
+        self.assertEqual(data["pickup_location"], "Lagos")
+        self.assertEqual(data["dropoff_location"], "Ikeja")
+        self.assertEqual(data["passengers"], 3)
+
+class TransportSearchSerializerTests(TestCase):
+    def test_transport_search_serializer_outputs_expected_fields(self):
+        transport = TransportService.objects.create(
+            vehicle_type="car_rental",
+            transport_name="Search Car Rental",
+            pickup_location="Lagos",
+            dropoff_location="Lagos",
+            price_per_passenger=Decimal("90.00"),
+            currency="NGN",
+        )
+        data = TransportServiceSerializer(transport).data
+        self.assertEqual(data["vehicle_type"], "car_rental")
+        self.assertEqual(data["transport_name"], "Search Car Rental")
+        self.assertEqual(data["pickup_location"], "Lagos")
+        self.assertEqual(data["dropoff_location"], "Lagos")
+        self.assertEqual(data["price_per_passenger"], "90.00")
+        self.assertEqual(data["currency"], "NGN")
+
+class TransportBookingSerializerTests(TestCase):
+    def test_transport_booking_serializer_outputs_expected_fields(self):
+        transport = TransportService.objects.create(
+            vehicle_type="bus",
+            transport_name="Booking Bus",
+            pickup_location="Lagos",
+            dropoff_location="Abuja",
+            price_per_passenger=Decimal("40.00"),
+            currency="NGN",
+            passengers=4,
+        )
+        data = TransportServiceSerializer(transport).data
+        self.assertEqual(data["vehicle_type"], "bus")
+        self.assertEqual(data["transport_name"], "Booking Bus")
+        self.assertEqual(data["pickup_location"], "Lagos")
+        self.assertEqual(data["dropoff_location"], "Abuja")
+        self.assertEqual(data["price_per_passenger"], "40.00")
+        self.assertEqual(data["currency"], "NGN")
+
+class AdminTransportSerializerTests(TestCase):
+    def test_admin_transport_serializer_outputs_expected_fields(self):
+        transport = TransportService.objects.create(
+            vehicle_type="bus",
+            transport_name="Admin Bus",
+            pickup_location="Lagos",
+            dropoff_location="Abuja",
+            price_per_passenger=Decimal("40.00"),
+            currency="NGN",
+            passengers=4,
+        )
+        data = TransportServiceSerializer(transport).data
+        self.assertEqual(data["vehicle_type"], "bus")
+        self.assertEqual(data["transport_name"], "Admin Bus")
+        self.assertEqual(data["pickup_location"], "Lagos")
+        self.assertEqual(data["dropoff_location"], "Abuja")
+        self.assertEqual(data["price_per_passenger"], "40.00")
+        self.assertEqual(data["currency"], "NGN")
+
+class TransportSearchResultSerializerTests(TestCase):
+    def test_transport_search_result_serializer_outputs_expected_fields(self):
+        transport = TransportService.objects.create(
+            vehicle_type="sedan",
+            transport_name="Search Result Sedan",
+            pickup_location="Lagos",
+            dropoff_location="Island",
+            price_per_passenger=Decimal("50.00"),
+            currency="NGN",
+        )
+        data = TransportServiceSerializer(transport).data
+        self.assertEqual(data["vehicle_type"], "sedan")
+        self.assertEqual(data["transport_name"], "Search Result Sedan")
+        self.assertEqual(data["pickup_location"], "Lagos")
+        self.assertEqual(data["dropoff_location"], "Island")
+        self.assertEqual(data["price_per_passenger"], "50.00")
+        self.assertEqual(data["currency"], "NGN")
+
+class TransportBookingDetailSerializerTests(TestCase):
+    def test_transport_booking_detail_serializer_outputs_expected_fields(self):
+        transport = TransportService.objects.create(
+            vehicle_type="suv",
+            transport_name="Booking Detail SUV",
+            pickup_location="Lagos",
+            dropoff_location="Ikeja",
+            price_per_passenger=Decimal("75.00"),
+            currency="NGN",
+            passengers=2,
+        )
+        data = TransportServiceSerializer(transport).data
+        self.assertEqual(data["vehicle_type"], "suv")
+        self.assertEqual(data["transport_name"], "Booking Detail SUV")
+        self.assertEqual(data["pickup_location"], "Lagos")
+        self.assertEqual(data["dropoff_location"], "Ikeja")
+        self.assertEqual(data["price_per_passenger"], "75.00")
+        self.assertEqual(data["currency"], "NGN")
+        self.assertEqual(data["passengers"], 2)
+
+
+class TransportSerializerValidationTests(TestCase):
+    def test_transport_serializer_missing_required_fields(self):
+        serializer = TransportServiceSerializer(
+            data={
+                "pickup_location": "Lagos",
+                "dropoff_location": "Ikeja",
+                "price_per_passenger": "80.00",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("vehicle_type", serializer.errors)
+        self.assertIn("transport_name", serializer.errors)
+
+    def test_transport_serializer_invalid_price(self):
+        serializer = TransportServiceSerializer(
+            data={
+                "vehicle_type": "suv",
+                "transport_name": "Invalid Price",
+                "pickup_location": "Lagos",
+                "dropoff_location": "Ikeja",
+                "price_per_passenger": "not-a-number",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("price_per_passenger", serializer.errors)
+
+class TransportBookingSerializerValidationTests(TestCase):
+    def test_transport_booking_serializer_missing_required_fields(self):
+        serializer = TransportServiceSerializer(
+            data={
+                "transport_id": 1,
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("passengers", serializer.errors)
+
+    def test_transport_booking_serializer_invalid_passengers(self):
+        serializer = TransportServiceSerializer(
+            data={
+                "transport_id": 1,
+                "passengers": "not-a-number",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("passengers", serializer.errors)
         

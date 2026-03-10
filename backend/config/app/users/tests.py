@@ -1,4 +1,7 @@
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+
+from app.users.serializers import RegisterSerializer, UserProfileSerializer
 
 # Create your tests here.
 class UserModelTest(TestCase):
@@ -1057,3 +1060,77 @@ class UserProfileDataValidationSuccessTest(TestCase):
         self.assertEqual(profile_response.data["phone_number"], "1234567890")
         self.assertEqual(profile_response.data["church"], "Test Church")
         self.assertEqual(profile_response.data["zone"], "Test Zone")
+
+
+class RegisterSerializerTests(TestCase):
+    def test_register_serializer_creates_user(self):
+        payload = {
+            "email": "serializer@example.com",
+            "password": "password123",
+            "country": "NG",
+        }
+        serializer = RegisterSerializer(data=payload)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        user = serializer.save()
+        self.assertEqual(user.email, "serializer@example.com")
+        self.assertTrue(user.check_password("password123"))
+
+
+class UserProfileSerializerTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email="profileserializer@example.com",
+            password="password123",
+            country="NG",
+        )
+
+    def test_user_profile_serializer_outputs_expected_fields(self):
+        data = UserProfileSerializer(self.user).data
+        self.assertEqual(data["email"], "profileserializer@example.com")
+        self.assertEqual(data["user_type"], "regular")
+        self.assertEqual(data["country"]["code"], str(self.user.country.code))
+        self.assertEqual(data["country"]["name"], str(self.user.country.name))
+
+
+class RegisterSerializerValidationTests(TestCase):
+    def test_register_serializer_missing_email(self):
+        serializer = RegisterSerializer(
+            data={
+                "password": "password123",
+                "country": "NG",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("email", serializer.errors)
+
+    def test_register_serializer_invalid_email(self):
+        serializer = RegisterSerializer(
+            data={
+                "email": "not-an-email",
+                "password": "password123",
+                "country": "NG",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("email", serializer.errors)
+
+    def test_register_serializer_missing_password(self):
+        serializer = RegisterSerializer(
+            data={
+                "email": "missingpass@example.com",
+                "country": "NG",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("password", serializer.errors)
+
+    def test_register_serializer_missing_country(self):
+        serializer = RegisterSerializer(
+            data={
+                "email": "missingcountry@example.com",
+                "password": "password123",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("country", serializer.errors)

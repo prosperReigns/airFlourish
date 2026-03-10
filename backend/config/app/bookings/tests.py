@@ -8,6 +8,7 @@ from app.users.models import User
 from rest_framework.test import APIClient
 
 from app.bookings.models import Booking
+from app.bookings.serializers import BookingSerializer
 from app.services.booking_engine import BookingEngine
 
 
@@ -476,4 +477,71 @@ class AdminHotelViewSetTests(TestCase):
         self.assertEqual(response.data[0]["location"], "Location 1")
         self.assertEqual(response.data[1]["name"], "Hotel 2")
         self.assertEqual(response.data[1]["location"], "Location 2")
-        
+
+class BookingModelTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email="modeluser@example.com",
+            password="password123",
+            country="NG",
+        )
+
+    def test_booking_str_and_defaults(self):
+        booking = Booking.objects.create(
+            user=self.user,
+            service_type="hotel",
+            reference_code="HOT-TEST-001",
+            total_price=Decimal("120.00"),
+            currency="NGN",
+        )
+        self.assertEqual(str(booking), "HOT-TEST-001 - hotel")
+        self.assertEqual(booking.status, "pending")
+        self.assertIsNone(booking.external_service_id)
+
+
+class BookingSerializerTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email="serializeruser@example.com",
+            password="password123",
+            country="NG",
+        )
+        self.booking = Booking.objects.create(
+            user=self.user,
+            service_type="hotel",
+            reference_code="HOT-TEST-002",
+            total_price=Decimal("200.00"),
+            currency="NGN",
+        )
+
+    def test_booking_serializer_outputs_expected_fields(self):
+        data = BookingSerializer(self.booking).data
+        self.assertEqual(data["user"], self.user.id)
+        self.assertEqual(data["service_type"], "hotel")
+        self.assertEqual(data["reference_code"], "HOT-TEST-002")
+        self.assertEqual(data["status"], "pending")
+        self.assertEqual(str(data["total_price"]), "200.00")
+        self.assertIn("created_at", data)
+
+
+class BookingSerializerValidationTests(TestCase):
+    def test_booking_serializer_missing_service_type(self):
+        serializer = BookingSerializer(
+            data={
+                "total_price": "120.00",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("service_type", serializer.errors)
+
+    def test_booking_serializer_invalid_total_price(self):
+        serializer = BookingSerializer(
+            data={
+                "service_type": "hotel",
+                "total_price": "not-a-number",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("total_price", serializer.errors)

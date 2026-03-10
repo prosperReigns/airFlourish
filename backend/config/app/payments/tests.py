@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 
 from app.bookings.models import Booking
 from app.payments.models import Payment
+from app.payments.serializers import PaymentSerializer
 from app.services.booking_engine import BookingEngine
 
 
@@ -131,6 +132,67 @@ class PaymentModelTests(TestCase):
         self.assertEqual(payment.payment_method, "card")
         self.assertEqual(payment.tx_ref, "tx-ref-model-test")
         self.assertEqual(payment.status, "pending")
+
+
+class PaymentSerializerTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email="serializerpayer@example.com",
+            password="password123",
+            country="NG",
+        )
+        self.booking = Booking.objects.create(
+            user=self.user,
+            service_type="hotel",
+            reference_code="PAY-TEST-001",
+            total_price=Decimal("180.00"),
+            currency="NGN",
+            status="pending",
+        )
+        self.payment = Payment.objects.create(
+            booking=self.booking,
+            amount=Decimal("180.00"),
+            currency="NGN",
+            payment_method="card",
+            tx_ref="tx-ref-serializer",
+            status="pending",
+        )
+
+    def test_payment_serializer_outputs_expected_fields(self):
+        data = PaymentSerializer(self.payment).data
+        self.assertEqual(data["booking"], self.booking.id)
+        self.assertEqual(data["amount"], "180.00")
+        self.assertEqual(data["currency"], "NGN")
+        self.assertEqual(data["payment_method"], "card")
+        self.assertEqual(data["tx_ref"], "tx-ref-serializer")
+
+
+class PaymentSerializerValidationTests(TestCase):
+    def test_payment_serializer_missing_required_fields(self):
+        serializer = PaymentSerializer(
+            data={
+                "amount": "120.00",
+                "currency": "NGN",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("booking", serializer.errors)
+        self.assertIn("payment_method", serializer.errors)
+        self.assertIn("tx_ref", serializer.errors)
+
+    def test_payment_serializer_invalid_amount(self):
+        serializer = PaymentSerializer(
+            data={
+                "booking": "invalid-booking",
+                "amount": "not-a-number",
+                "currency": "NGN",
+                "payment_method": "card",
+                "tx_ref": "tx-invalid",
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("amount", serializer.errors)
 
 class PaymentAPITests(TestCase):
     def setUp(self):
