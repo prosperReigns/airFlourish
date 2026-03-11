@@ -442,7 +442,7 @@ class TransportSearchView(APIView):
                                              "pickup_location": openapi.Schema(type=openapi.TYPE_STRING),
                                              "dropoff_location": openapi.Schema(type=openapi.TYPE_STRING),
                                              "pickup_time": openapi.Schema(type=openapi.FORMAT_DATETIME),
-                                             "dropoff_time": openapi.Schema(type=openapi.TYPE_DATETIME),
+                                             "dropoff_time": openapi.Schema(type=openapi.FORMAT_DATETIME),
                                              "company": openapi.Schema(type=openapi.TYPE_STRING),
                                              "price_per_passenger": openapi.Schema(type=openapi.TYPE_NUMBER, format='decimal'),
                                              "currency": openapi.Schema(type=openapi.TYPE_STRING),
