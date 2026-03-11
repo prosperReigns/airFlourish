@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 from app.payments.models import Payment
 from app.services.amadeus import AmadeusService
