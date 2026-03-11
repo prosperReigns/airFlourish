@@ -21,8 +21,7 @@ from .serializers import FlightBookingSerializer
 @method_decorator(
     name="list",
     decorator=swagger_auto_schema(operation_description="List flight bookings.",
-        request_body=FlightBookingSerializer,
-        responses={201: FlightBookingSerializer}
+        responses={200: FlightBookingSerializer(many=True)}
     ),
 )
 @method_decorator(
@@ -41,21 +40,20 @@ from .serializers import FlightBookingSerializer
     name="update",
     decorator=swagger_auto_schema(operation_description="Update a flight booking.",
         request_body=FlightBookingSerializer,
-        responses={201: FlightBookingSerializer}
+        responses={200: FlightBookingSerializer}
         ),
 )
 @method_decorator(
     name="partial_update",
     decorator=swagger_auto_schema(operation_description="Partially update a flight booking.",
         request_body=FlightBookingSerializer,
-        responses={201: FlightBookingSerializer}
-        ),
+        responses={200: FlightBookingSerializer}
+        ),  
 )
 @method_decorator(
     name="destroy",
     decorator=swagger_auto_schema(operation_description="Delete a flight booking.",
-        request_body=FlightBookingSerializer,
-        responses={201: FlightBookingSerializer}
+        responses={204: "flight booking deleted successfully"}
     ),
 )
 class FlightBookingViewSet(viewsets.ModelViewSet):
