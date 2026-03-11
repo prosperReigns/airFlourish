@@ -24,7 +24,7 @@ from drf_yasg import openapi
                                                   type=openapi.TYPE_OBJECT,
                                                   properties={
                                                       "id": openapi.Schema(type=openapi.TYPE_INTEGER),
-                                                      "booking": openapi.Schema(type=openapi.TYPE_STRING),
+                                                      "booking": openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True),
                                                       "transport_type": openapi.Schema(type=openapi.TYPE_STRING),
                                                       "pickup_location": openapi.Schema(type=openapi.TYPE_STRING),
                                                       "dropoff_location": openapi.Schema(type=openapi.TYPE_STRING),
@@ -52,7 +52,7 @@ from drf_yasg import openapi
                                               type=openapi.TYPE_OBJECT,
                                               properties={
                                                   "id": openapi.Schema(type=openapi.TYPE_INTEGER),
-                                                  "booking": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "booking": openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True),
                                                   "transport_type": openapi.Schema(type=openapi.TYPE_STRING),
                                                   "pickup_location": openapi.Schema(type=openapi.TYPE_STRING),
                                                   "dropoff_location": openapi.Schema(type=openapi.TYPE_STRING),
@@ -98,7 +98,7 @@ class TransportViewSet(viewsets.ReadOnlyModelViewSet):
                                                   type=openapi.TYPE_OBJECT,
                                                   properties={
                                                       "id": openapi.Schema(type=openapi.TYPE_INTEGER),
-                                                      "booking": openapi.Schema(type=openapi.TYPE_STRING),
+                                                      "booking": openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True),
                                                       "transport_type": openapi.Schema(type=openapi.TYPE_STRING),
                                                       "pickup_location": openapi.Schema(type=openapi.TYPE_STRING),
                                                       "dropoff_location": openapi.Schema(type=openapi.TYPE_STRING),
@@ -126,7 +126,7 @@ class TransportViewSet(viewsets.ReadOnlyModelViewSet):
                                               type=openapi.TYPE_OBJECT,
                                               properties={
                                                   "id": openapi.Schema(type=openapi.TYPE_INTEGER),
-                                                  "booking": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "booking": openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True),
                                                   "transport_type": openapi.Schema(type=openapi.TYPE_STRING),
                                                   "pickup_location": openapi.Schema(type=openapi.TYPE_STRING),
                                                   "dropoff_location": openapi.Schema(type=openapi.TYPE_STRING),
@@ -153,7 +153,7 @@ class TransportViewSet(viewsets.ReadOnlyModelViewSet):
                                               type=openapi.TYPE_OBJECT,
                                               properties={
                                                   "id": openapi.Schema(type=openapi.TYPE_INTEGER),
-                                                  "booking": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "booking": openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True),
                                                   "transport_type": openapi.Schema(type=openapi.TYPE_STRING),
                                                   "pickup_location": openapi.Schema(type=openapi.TYPE_STRING),
                                                   "dropoff_location": openapi.Schema(type=openapi.TYPE_STRING),
@@ -230,7 +230,7 @@ class AdminTransportViewSet(viewsets.ModelViewSet):
                                                   type=openapi.TYPE_OBJECT,
                                                   properties={
                                                       "id": openapi.Schema(type=openapi.TYPE_INTEGER),
-                                                      "booking": openapi.Schema(type=openapi.TYPE_STRING),
+                                                      "booking": openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True),
                                                       "transport_type": openapi.Schema(type=openapi.TYPE_STRING),
                                                       "pickup_location": openapi.Schema(type=openapi.TYPE_STRING),
                                                       "dropoff_location": openapi.Schema(type=openapi.TYPE_STRING),
@@ -258,7 +258,7 @@ class AdminTransportViewSet(viewsets.ModelViewSet):
                                               type=openapi.TYPE_OBJECT,
                                               properties={
                                                   "id": openapi.Schema(type=openapi.TYPE_INTEGER),
-                                                  "booking": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "booking": openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True),
                                                   "transport_type": openapi.Schema(type=openapi.TYPE_STRING),
                                                   "pickup_location": openapi.Schema(type=openapi.TYPE_STRING),
                                                   "dropoff_location": openapi.Schema(type=openapi.TYPE_STRING),
@@ -437,7 +437,7 @@ class TransportSearchView(APIView):
                                          type=openapi.TYPE_OBJECT,
                                          properties={
                                              "id": openapi.Schema(type=openapi.TYPE_INTEGER),
-                                             "booking": openapi.Schema(type=openapi.TYPE_STRING),
+                                             "booking": openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True),
                                              "transport_type": openapi.Schema(type=openapi.TYPE_STRING),
                                              "pickup_location": openapi.Schema(type=openapi.TYPE_STRING),
                                              "dropoff_location": openapi.Schema(type=openapi.TYPE_STRING),
