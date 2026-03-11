@@ -18,7 +18,7 @@ from drf_yasg import openapi
 @method_decorator(
     name="list",
     decorator=swagger_auto_schema(operation_description="List visa applications.",
-                                  manual_parameters={
+                                  manual_parameters=list({
                                  "destination_country": openapi.Parameter(
                                      'destination_country', openapi.IN_QUERY, description="Filter by destination country", type=openapi.TYPE_STRING
                                  ),
@@ -31,7 +31,7 @@ from drf_yasg import openapi
                                  "flight_id": openapi.Parameter(
                                      'flight_id', openapi.IN_QUERY, description="Filter by associated flight booking ID", type=openapi.TYPE_INTEGER
                                  ),
-                             }
+                              }.values())
     )
 )
 @method_decorator(
@@ -51,7 +51,7 @@ from drf_yasg import openapi
                                       201: VisaApplicationSerializer(),
                                       400: "Invalid input data"
                                   },
-                                  manual_parameters={
+                                  manual_parameters=list({
                                      "flight_id": openapi.Parameter(
                                          'flight_id', openapi.IN_QUERY, description="Optional flight booking ID to link with this visa application", type=openapi.TYPE_INTEGER
                                      ),
@@ -71,7 +71,7 @@ from drf_yasg import openapi
                                          'visa_type', openapi.IN_QUERY, description="Type of visa (e.g. tourist, business)", type=openapi.TYPE_STRING
                                      ),
                                      "appointment_date": openapi.Parameter(
-                                         'appointment_date', openapi.IN_QUERY, description="Date of visa appointment", type=openapi.FORMAT_DATE
+                                         'appointment_date', openapi.IN_QUERY, description="Date of visa appointment", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                      ),
                                      "passport_scan": openapi.Parameter(
                                          'passport_scan', openapi.IN_QUERY, description="Base64-encoded scan of the passport", type=openapi.TYPE_STRING
@@ -82,7 +82,7 @@ from drf_yasg import openapi
                                      "supporting_docs": openapi.Parameter(
                                          'supporting_docs', openapi.IN_QUERY, description="Base64-encoded supporting documents for the visa application", type=openapi.TYPE_STRING
                                       ),
-                                  }
+                                  }.values())
     )
 )
 @method_decorator(
@@ -94,7 +94,7 @@ from drf_yasg import openapi
                                       400: "Invalid input data",
                                       404: "Visa application not found"
                                   },
-                                  manual_parameters={
+                                  manual_parameters=list({
                                      "destination_country": openapi.Parameter(
                                          'destination_country', openapi.IN_QUERY, description="The country for which the visa is being applied", type=openapi.TYPE_STRING
                                      ),
@@ -102,7 +102,7 @@ from drf_yasg import openapi
                                          'visa_type', openapi.IN_QUERY, description="Type of visa (e.g. tourist, business)", type=openapi.TYPE_STRING
                                      ),
                                      "appointment_date": openapi.Parameter(
-                                         'appointment_date', openapi.IN_QUERY, description="Date of visa appointment", type=openapi.FORMAT_DATE
+                                         'appointment_date', openapi.IN_QUERY, description="Date of visa appointment", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                      ),
                                      "passport_scan": openapi.Parameter(
                                          'passport_scan', openapi.IN_QUERY, description="Base64-encoded scan of the passport", type=openapi.TYPE_STRING
@@ -113,7 +113,7 @@ from drf_yasg import openapi
                                      "supporting_docs": openapi.Parameter(
                                          'supporting_docs', openapi.IN_QUERY, description="Base64-encoded supporting documents for the visa application", type=openapi.TYPE_STRING
                                       ),
-                                  }
+                                  }.values())
     )
 )
 @method_decorator(
@@ -125,7 +125,7 @@ from drf_yasg import openapi
                                       400: "Invalid input data",
                                       404: "Visa application not found"
                                   },
-                                  manual_parameters={
+                                  manual_parameters=list({
                                      "destination_country": openapi.Parameter(
                                          'destination_country', openapi.IN_QUERY, description="The country for which the visa is being applied", type=openapi.TYPE_STRING
                                      ),
@@ -133,7 +133,7 @@ from drf_yasg import openapi
                                          'visa_type', openapi.IN_QUERY, description="Type of visa (e.g. tourist, business)", type=openapi.TYPE_STRING
                                      ),
                                      "appointment_date": openapi.Parameter(
-                                         'appointment_date', openapi.IN_QUERY, description="Date of visa appointment", type=openapi.FORMAT_DATE
+                                         'appointment_date', openapi.IN_QUERY, description="Date of visa appointment", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                      ),
                                      "passport_scan": openapi.Parameter(
                                          'passport_scan', openapi.IN_QUERY, description="Base64-encoded scan of the passport", type=openapi.TYPE_STRING
@@ -144,7 +144,7 @@ from drf_yasg import openapi
                                      "supporting_docs": openapi.Parameter(
                                          'supporting_docs', openapi.IN_QUERY, description="Base64-encoded supporting documents for the visa application", type=openapi.TYPE_STRING
                                       ),
-                                  }
+                                  }.values())
     )
 )
 @method_decorator(
@@ -247,7 +247,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                             200: "Visa submitted to embassy successfully",
                             404: "Visa application not found"
                          },
-                         manual_parameters={
+                         manual_parameters=list({
                              "visa_id": openapi.Parameter(
                                  'visa_id', openapi.IN_QUERY, description="External ID from visa service provider (if applicable)", type=openapi.TYPE_STRING
                              ),
@@ -258,7 +258,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                     'visa_type', openapi.IN_QUERY, description="Type of visa (e.g. tourist, business)", type=openapi.TYPE_STRING
                                 ),
                                 "appointment_date": openapi.Parameter(
-                                    'appointment_date', openapi.IN_QUERY, description="Date of visa appointment", type=openapi.FORMAT_DATE
+                                    'appointment_date', openapi.IN_QUERY, description="Date of visa appointment", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                 ),
                                 "passport_scan": openapi.Parameter(
                                     'passport_scan', openapi.IN_QUERY, description="Base64-encoded scan of the passport", type=openapi.TYPE_STRING
@@ -285,7 +285,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                      'travel_history', openapi.IN_QUERY, description="Applicant's recent travel history", type=openapi.TYPE_STRING
                                   ),
                                  "interview_date": openapi.Parameter(
-                                     'interview_date', openapi.IN_QUERY, description="Scheduled date for visa interview (if applicable)", type=openapi.FORMAT_DATE
+                                     'interview_date', openapi.IN_QUERY, description="Scheduled date for visa interview (if applicable)", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                   ),
                                  "interview_location": openapi.Parameter(
                                      'interview_location', openapi.IN_QUERY, description="Location of visa interview (if applicable)", type=openapi.TYPE_STRING
@@ -315,7 +315,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                      'visa_tracking_number', openapi.IN_QUERY, description="Tracking number for the visa application (if provided by embassy)", type=openapi.TYPE_STRING
                                   ),
                                  "visa_decision_date": openapi.Parameter(
-                                     'visa_decision_date', openapi.IN_QUERY, description="Date when the visa decision is expected or received", type=openapi.FORMAT_DATE
+                                     'visa_decision_date', openapi.IN_QUERY, description="Date when the visa decision is expected or received", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                   ),
                                  "visa_decision": openapi.Parameter(
                                      'visa_decision', openapi.IN_QUERY, description="Outcome of the visa application (e.g. approved, rejected)", type=openapi.TYPE_STRING
@@ -351,9 +351,9 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                     ), "visa_duration": openapi.Parameter(
                                         'visa_duration', openapi.IN_QUERY, description="Duration of stay allowed by the visa", type=openapi.TYPE_STRING
                                     ), "visa_issuance_date": openapi.Parameter(
-                                        'visa_issuance_date', openapi.IN_QUERY, description="Date when the visa was issued (if approved)", type=openapi.FORMAT_DATE
+                                        'visa_issuance_date', openapi.IN_QUERY, description="Date when the visa was issued (if approved)", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                     ), "visa_expiry_date": openapi.Parameter(
-                                        'visa_expiry_date', openapi.IN_QUERY, description="Date when the visa expires (if approved)", type=openapi.FORMAT_DATE
+                                        'visa_expiry_date', openapi.IN_QUERY, description="Date when the visa expires (if approved)", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                     ), "embassy_interview_outcome": openapi.Parameter(
                                         'embassy_interview_outcome', openapi.IN_QUERY, description="Outcome of any embassy interview related to the visa application", type=openapi.TYPE_STRING
                                     ), "consular_officer_notes": openapi.Parameter(
@@ -437,7 +437,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                       ),"travel_history": openapi.Parameter(
                                          'travel_history', openapi.IN_QUERY, description="Applicant's recent travel history", type=openapi.TYPE_STRING
                                       ),
-                                    }
+                                     }.values())
     )
     def submit_to_embassy(self, request, pk=None):
         visa = self.get_object()
@@ -451,7 +451,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                             200: "Visa application approved successfully",
                             404: "Visa application not found"
                          },
-                         manual_parameters={
+                         manual_parameters=list({
                              "visa_id": openapi.Parameter(
                                  'visa_id', openapi.IN_QUERY, description="External ID from visa service provider (if applicable)", type=openapi.TYPE_STRING
                              ),
@@ -462,7 +462,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                     'visa_type', openapi.IN_QUERY, description="Type of visa (e.g. tourist, business)", type=openapi.TYPE_STRING
                                 ),
                                 "appointment_date": openapi.Parameter(
-                                    'appointment_date', openapi.IN_QUERY, description="Date of visa appointment", type=openapi.FORMAT_DATE
+                                    'appointment_date', openapi.IN_QUERY, description="Date of visa appointment", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                 ),
                                 "passport_scan": openapi.Parameter(
                                     'passport_scan', openapi.IN_QUERY, description="Base64-encoded scan of the passport", type=openapi.TYPE_STRING
@@ -489,7 +489,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                      'travel_history', openapi.IN_QUERY, description="Applicant's recent travel history", type=openapi.TYPE_STRING
                                   ),
                                  "interview_date": openapi.Parameter(
-                                     'interview_date', openapi.IN_QUERY, description="Scheduled date for visa interview (if applicable)", type=openapi.FORMAT_DATE
+                                     'interview_date', openapi.IN_QUERY, description="Scheduled date for visa interview (if applicable)", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                   ),
                                     "interview_location": openapi.Parameter(
                                         'interview_location', openapi.IN_QUERY, description="Location of visa interview (if applicable)", type=openapi.TYPE_STRING
@@ -510,7 +510,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                       ), "visa_tracking_number": openapi.Parameter(
                                          'visa_tracking_number', openapi.IN_QUERY, description="Tracking number for the visa application (if provided by embassy)", type=openapi.TYPE_STRING
                                       ), "visa_decision_date": openapi.Parameter(
-                                         'visa_decision_date', openapi.IN_QUERY, description="Date when the visa decision is expected or received", type=openapi.FORMAT_DATE
+                                         'visa_decision_date', openapi.IN_QUERY, description="Date when the visa decision is expected or received", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                       ), "visa_decision": openapi.Parameter(
                                          'visa_decision', openapi.IN_QUERY, description="Outcome of the visa application (e.g. approved, rejected)", type=openapi.TYPE_STRING
                                       ), "next_steps": openapi.Parameter(
@@ -536,9 +536,9 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                       ), "visa_duration": openapi.Parameter(
                                          'visa_duration', openapi.IN_QUERY, description="Duration of stay allowed by the visa", type=openapi.TYPE_STRING
                                       ), "visa_issuance_date": openapi.Parameter(
-                                         'visa_issuance_date', openapi.IN_QUERY, description="Date when the visa was issued (if approved)", type=openapi.FORMAT_DATE
+                                         'visa_issuance_date', openapi.IN_QUERY, description="Date when the visa was issued (if approved)", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                       ), "visa_expiry_date": openapi.Parameter(
-                                         'visa_expiry_date', openapi.IN_QUERY, description="Date when the visa expires (if approved)", type=openapi.FORMAT_DATE
+                                         'visa_expiry_date', openapi.IN_QUERY, description="Date when the visa expires (if approved)", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                       ), "embassy_interview_outcome": openapi.Parameter(
                                          'embassy_interview_outcome', openapi.IN_QUERY, description="Outcome of any embassy interview related to the visa application", type=openapi.TYPE_STRING
                                       ), "consular_officer_notes": openapi.Parameter(
@@ -616,7 +616,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                       ), "travel_history": openapi.Parameter(
                                          'travel_history', openapi.IN_QUERY, description="Applicant's recent travel history", type=openapi.TYPE_STRING
                                       ),
-                         }
+                         }.values())
     )
     def approve(self, request, pk=None):
         visa = self.get_object()
@@ -630,7 +630,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                             200: "Visa application rejected successfully",
                             404: "Visa application not found"
                             },
-                            manual_parameters={
+                            manual_parameters=list({
                              "rejection_reason": openapi.Parameter(
                                  'rejection_reason', openapi.IN_QUERY, description="Reason for rejecting the visa application", type=openapi.TYPE_STRING
                               ), "additional_comments": openapi.Parameter(
@@ -666,7 +666,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                                       ), "additional_documentation_comments": openapi.Parameter(
                                          'additional_documentation_comments', openapi.IN_QUERY, description="Any comments related to additional documentation required for the visa application", type=openapi.TYPE_STRING
                                       )
-                            }
+                            }.values())
     )
     def reject(self, request, pk=None):
         visa = self.get_object()
@@ -684,7 +684,7 @@ class VisaApprovalView(APIView):
                             403: "Only admins can approve/reject visas",
                             404: "Visa application not found"
                             },
-                            manual_parameters={
+                            manual_parameters=list({
                              "action": openapi.Parameter(
                                  'action', openapi.IN_QUERY, description="Action to perform on the visa application (approve or reject)", type=openapi.TYPE_STRING
                               ), "visa_id": openapi.Parameter(
@@ -710,9 +710,9 @@ class VisaApprovalView(APIView):
                                ), "visa_duration": openapi.Parameter(
                                   'visa_duration', openapi.IN_QUERY, description="Duration of stay allowed by the visa if approved", type=openapi.TYPE_STRING
                                ), "visa_issuance_date": openapi.Parameter(
-                                  'visa_issuance_date', openapi.IN_QUERY, description="Date when the visa was issued (if approved)", type=openapi.FORMAT_DATE
+                                  'visa_issuance_date', openapi.IN_QUERY, description="Date when the visa was issued (if approved)", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                ), "visa_expiry_date": openapi.Parameter(
-                                  'visa_expiry_date', openapi.IN_QUERY, description="Date when the visa expires (if approved)", type=openapi.FORMAT_DATE
+                                  'visa_expiry_date', openapi.IN_QUERY, description="Date when the visa expires (if approved)", type=openapi.TYPE_STRING, format=openapi.FORMAT_DATE
                                ), "interview_comments": openapi.Parameter(
                                          'interview_comments', openapi.IN_QUERY, description="Any comments related to a visa interview (if applicable)", type=openapi.TYPE_STRING
                                       ), "follow_up_comments": openapi.Parameter(
@@ -754,7 +754,7 @@ class VisaApprovalView(APIView):
                                        ), "applicant_info": openapi.Parameter(
                                           'applicant_info', openapi.IN_QUERY, description="Additional applicant information (e.g. occupation, employer)", type=openapi.TYPE_STRING
                                         )
-                            }
+                            }.values())
     )
     def post(self, request, visa_id):
         user = request.user
