@@ -14,13 +14,20 @@ from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .throttles import IPRateThrottle
 from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 User = get_user_model()
 
 #users/register/
 @method_decorator(
     name="post",
-    decorator=swagger_auto_schema(operation_description="Register a new user account."),
+    decorator=swagger_auto_schema(operation_description="Register a new user account.",
+        request_body=RegisterSerializer,
+            responses={
+                201: "User registered successfully",
+                400: "Invalid input data"
+        }
+    )
 )
 class RegisterView(generics.CreateAPIView):
     """Endpoint for user registration. Allows anyone to create a new user account.
@@ -44,7 +51,37 @@ class LoginThrottle(UserRateThrottle):
 
 @method_decorator(
     name="post",
-    decorator=swagger_auto_schema(operation_description="Authenticate and obtain JWT tokens."),
+    decorator=swagger_auto_schema(
+        operation_description="Authenticate and obtain JWT tokens.",
+        request_body=CustomTokenObtainPairSerializer,
+        responses={
+            200: openapi.Response(
+                description="Successful login",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "refresh": openapi.Schema(type=openapi.TYPE_STRING),
+                        "access": openapi.Schema(type=openapi.TYPE_STRING),
+                        "user_type": openapi.Schema(type=openapi.TYPE_STRING),
+                        "email": openapi.Schema(type=openapi.TYPE_STRING),
+                        "first_name": openapi.Schema(type=openapi.TYPE_STRING),
+                        "last_name": openapi.Schema(type=openapi.TYPE_STRING),
+                        "country": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "code": openapi.Schema(type=openapi.TYPE_STRING),
+                                "name": openapi.Schema(type=openapi.TYPE_STRING),
+                            }
+                        ),
+                        "phone_number": openapi.Schema(type=openapi.TYPE_STRING),
+                        "church": openapi.Schema(type=openapi.TYPE_STRING),
+                        "zone": openapi.Schema(type=openapi.TYPE_STRING),
+                    },
+                ),
+            ),
+            401: "Invalid credentials",
+        },
+    )
 )
 class CustomTokenObtainPairView(TokenObtainPairView):
     """Endpoint for user login that returns JWT tokens. It includes additional user information in the response.
@@ -63,6 +100,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         // other user info fields...
     }
     """
+    
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [LoginThrottle, IPRateThrottle]
 
@@ -73,7 +111,33 @@ class ProfileView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(operation_description="Retrieve the authenticated user's profile.")
+    @swagger_auto_schema(operation_description="Retrieve the authenticated user's profile.",
+                         responses={
+            200: openapi.Response(
+                description="User profile retrieved successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "email": openapi.Schema(type=openapi.TYPE_STRING),
+                        "first_name": openapi.Schema(type=openapi.TYPE_STRING),
+                        "last_name": openapi.Schema(type=openapi.TYPE_STRING),
+                        "country": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "code": openapi.Schema(type=openapi.TYPE_STRING),
+                                "name": openapi.Schema(type=openapi.TYPE_STRING),
+                            }
+                        ),
+                        "phone_number": openapi.Schema(type=openapi.TYPE_STRING),
+                        "church": openapi.Schema(type=openapi.TYPE_STRING),
+                        "zone": openapi.Schema(type=openapi.TYPE_STRING),
+                        "user_type": openapi.Schema(type=openapi.TYPE_STRING),
+                    },
+                ),
+            ),
+            401: "Authentication credentials were not provided or are invalid",
+        },
+    )
     def get(self, request):
         """Returns the profile information of the authenticated user.
         Expected URL: /users/profile/
@@ -106,7 +170,18 @@ class LogoutView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(operation_description="Logout a user by blacklisting the refresh token.")
+    @swagger_auto_schema(operation_description="Logout a user by blacklisting the refresh token.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "refresh": openapi.Schema(type=openapi.TYPE_STRING, description="The refresh token to blacklist"),
+            },            required=["refresh"],
+        ),
+        responses={
+            205: "Logout successful",
+            400: "Invalid refresh token or missing token",
+        },
+    )
     def post(self, request):
         """Logs out the user by blacklisting the provided refresh token. This prevents the token from being used to obtain new access tokens.
         Expected request data:

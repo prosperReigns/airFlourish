@@ -1,3 +1,5 @@
+from tkinter.messagebox import IGNORE
+
 from django.utils.decorators import method_decorator
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
@@ -11,30 +13,71 @@ from rest_framework.permissions import IsAuthenticated
 from app.services.booking_engine import BookingEngine
 from rest_framework.throttling import UserRateThrottle
 from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 @method_decorator(
     name="list",
-    decorator=swagger_auto_schema(operation_description="List bookings."),
+    decorator=swagger_auto_schema(operation_description="List bookings.",
+                                  responses={
+                                      200: BookingSerializer(many=True),
+                                      403: "Forbidden"
+                                  }
+                                ),
 )
 @method_decorator(
     name="retrieve",
-    decorator=swagger_auto_schema(operation_description="Retrieve a booking by ID."),
+    decorator=swagger_auto_schema(operation_description="Retrieve a booking by ID.",
+                                  responses={
+                                      200: BookingSerializer(),
+                                      403: "Forbidden",
+                                      404: "Booking not found"
+                                  }
+    ),
 )
 @method_decorator(
     name="create",
-    decorator=swagger_auto_schema(operation_description="Create a booking."),
+    decorator=swagger_auto_schema(operation_description="Create a booking.",
+                                  request_body=BookingSerializer,
+                                  responses={
+                                      201: BookingSerializer(),
+                                      400: "Invalid input data",
+                                      403: "Forbidden"
+                                  }
+    ),
 )
 @method_decorator(
     name="update",
-    decorator=swagger_auto_schema(operation_description="Update a booking (admin only)."),
+    decorator=swagger_auto_schema(operation_description="Update a booking (admin only).",
+                                  request_body=BookingSerializer,
+                                  responses={
+                                      200: BookingSerializer(),
+                                      400: "Invalid input data",
+                                      403: "Forbidden",
+                                      404: "Booking not found"
+                                  }
+    ),
 )
 @method_decorator(
     name="partial_update",
-    decorator=swagger_auto_schema(operation_description="Partially update a booking (admin only)."),
+    decorator=swagger_auto_schema(operation_description="Partially update a booking (admin only).",
+                                  request_body=BookingSerializer,
+                                  responses={
+                                      200: BookingSerializer(),
+                                      400: "Invalid input data",
+                                      403: "Forbidden",
+                                      404: "Booking not found"
+                                  }
+    ),
 )
 @method_decorator(
     name="destroy",
-    decorator=swagger_auto_schema(operation_description="Delete a booking."),
+    decorator=swagger_auto_schema(operation_description="Delete a booking.",
+                                  responses={
+                                      204: "Booking deleted successfully",
+                                      403: "Forbidden",
+                                      404: "Booking not found"
+                                  }
+                                ),
 )
 class BookingViewSet(viewsets.ModelViewSet):
     """ViewSet for managing bookings. Regular users can only see and manage their own bookings, while admin users can see and manage all bookings.
@@ -128,7 +171,25 @@ class FlightSearchView(APIView):
     - return_date: Date of return in YYYY-MM-DD format (optional)
     Example request: /bookings/search-flights/?origin=JFK&destination=LAX&departure_date=2023-10-01&return_date=2023-10-05
     """
-    @swagger_auto_schema(operation_description="Search flights by origin, destination, and dates.")
+    @swagger_auto_schema(operation_description="Search flights by origin, destination, and dates.",
+                                  manual_parameters=[
+                                         openapi.Parameter(
+                                             'origin', openapi.IN_QUERY, description="IATA code of the departure airport", type=openapi.TYPE_STRING, required=True
+                                         ),
+                                         openapi.Parameter(
+                                             'destination', openapi.IN_QUERY, description="IATA code of the arrival airport", type=openapi.TYPE_STRING, required=True
+                                         ),
+                                         openapi.Parameter(
+                                             'departure_date', openapi.IN_QUERY, description="Date of departure in YYYY-MM-DD format", type=openapi.TYPE_STRING, required=True
+                                         ),
+                                         openapi.Parameter(
+                                             'return_date', openapi.IN_QUERY, description="Date of return in YYYY-MM-DD format (optional)", type=openapi.TYPE_STRING, required=False
+                                         ),
+                                         openapi.Parameter(
+                                             'limit', openapi.IN_QUERY, description="Maximum number of results to return", type=openapi.TYPE_INTEGER, required=False
+                                         )
+                                    ]
+                                )
     def get(self, request):
         """Searches for flights using the Amadeus API based on the provided query parameters.
         Expected URL: /bookings/search-flights/
@@ -172,7 +233,21 @@ class CancelBookingView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(operation_description="Cancel a booking by ID.")
+    @swagger_auto_schema(operation_description="Cancel a booking by ID.",
+                                  request_body=openapi.Schema(
+                                      type=openapi.TYPE_OBJECT,
+                                      properties={
+                                          "reason": openapi.Schema(type=openapi.TYPE_STRING, description="Reason for cancellation (optional)")
+                                      },
+                                      required=[]
+                                  ),
+                                  responses={
+                                      200: "Booking cancelled successfully",
+                                      400: "Invalid booking ID or missing reason",
+                                      403: "Forbidden",
+                                      404: "Booking not found"
+                                  }
+    )
     def post(self, request, booking_id):
         """Cancels a booking by its ID. Only the user who made the booking or an admin can cancel it.
         Expected URL: /bookings/<booking_id>/cancel/

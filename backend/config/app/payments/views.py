@@ -13,31 +13,71 @@ from django.http import HttpResponse
 from app.services.booking_engine import BookingEngine
 from app.services.tasks import process_flight_booking
 from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 # --- ViewSet for Admin/User Payment access ---
 @method_decorator(
     name="list",
-    decorator=swagger_auto_schema(operation_description="List payments."),
+    decorator=swagger_auto_schema(operation_description="List payments.",
+                                  manual_parameters=[
+                                     openapi.Parameter(
+                                         'booking_id', openapi.IN_QUERY, description="Filter payments by booking ID", type=openapi.TYPE_INTEGER
+                                     ),
+                                     openapi.Parameter(
+                                         'status', openapi.IN_QUERY, description="Filter payments by status (pending, succeeded, failed)", type=openapi.TYPE_STRING
+                                     ),
+                                 ]
+    )
 )
 @method_decorator(
     name="retrieve",
-    decorator=swagger_auto_schema(operation_description="Retrieve a payment by ID."),
+    decorator=swagger_auto_schema(operation_description="Retrieve a payment by ID.",
+                                  responses={
+                                     200: PaymentSerializer(),
+                                     404: "Payment not found"
+                                 }
+    )
 )
 @method_decorator(
     name="create",
-    decorator=swagger_auto_schema(operation_description="Create a payment record."),
+    decorator=swagger_auto_schema(operation_description="Create a payment record.",
+                                  request_body=PaymentSerializer,
+                                  responses={
+                                     201: PaymentSerializer(),
+                                     400: "Invalid input data"
+                                 }
+    )
 )
 @method_decorator(
     name="update",
-    decorator=swagger_auto_schema(operation_description="Update a payment."),
+    decorator=swagger_auto_schema(operation_description="Update a payment.",
+                                  request_body=PaymentSerializer,
+                                  responses={
+                                     200: PaymentSerializer(),
+                                     400: "Invalid input data",
+                                     404: "Payment not found"
+                                 }
+    )
 )
 @method_decorator(
     name="partial_update",
-    decorator=swagger_auto_schema(operation_description="Partially update a payment."),
+    decorator=swagger_auto_schema(operation_description="Partially update a payment.",
+                                  request_body=PaymentSerializer,
+                                  responses={
+                                     200: PaymentSerializer(),
+                                     400: "Invalid input data",
+                                     404: "Payment not found"
+                                 }
+    )
 )
 @method_decorator(
     name="destroy",
-    decorator=swagger_auto_schema(operation_description="Delete a payment."),
+    decorator=swagger_auto_schema(operation_description="Delete a payment.",
+                                  responses={
+                                     204: "Payment deleted successfully",
+                                     404: "Payment not found"
+                                 }
+    )
 )
 class PaymentViewSet(viewsets.ModelViewSet):
     """ViewSet for managing payments. Regular users can only see and manage their own payments, while admin users can see and manage all payments.
@@ -83,7 +123,18 @@ class FlutterwaveWebhookView(APIView):
     permission_classes = []
 
     @transaction.atomic
-    @swagger_auto_schema(operation_description="Handle Flutterwave webhook callbacks.")
+    @swagger_auto_schema(operation_description="Handle Flutterwave webhook callbacks.",
+                             request_body=openapi.Schema(
+                                 type=openapi.TYPE_OBJECT,
+                                 properties={
+                                              "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                              "txRef": openapi.Schema(type=openapi.TYPE_STRING),
+                                              "amount": openapi.Schema(type=openapi.TYPE_NUMBER, format='float'),
+                                              "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                                              "status": openapi.Schema(type=openapi.TYPE_STRING)
+                                 }
+                             )
+    )
     def post(self, request):
         """Endpoint to handle Flutterwave payment webhooks. This endpoint receives payment status updates from Flutterwave and processes them accordingly. It verifies the signature of the incoming request to ensure it is from Flutterwave, then checks the payment status and updates the corresponding payment record in the database. If the payment is successful, it attaches the payment to the booking and triggers any necessary post-payment processing. If the payment fails, it marks the payment as failed and updates the booking status.
         Expected request headers:
@@ -190,7 +241,17 @@ class CardPaymentInitView(APIView):
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
-    @swagger_auto_schema(operation_description="Initiate a card payment for a booking.")
+    @swagger_auto_schema(operation_description="Initiate a card payment for a booking.",
+                             request_body=openapi.Schema(
+                                    type=openapi.TYPE_OBJECT,
+                                    properties={
+                                                "booking_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                "amount": openapi.Schema(type=openapi.TYPE_NUMBER, format='float'),
+                                                "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
+                                            }
+                                ),
+                             )
     def post(self, request):
         """Endpoint for initializing a card payment for a booking. This endpoint creates a pending payment record and returns the Flutterwave payment link that the user can use to complete the card payment. The user must provide the booking ID, amount, currency, and a unique transaction reference (tx_ref). An idempotency key is required in the headers to prevent duplicate payments. The response includes the payment details and the Flutterwave payment link.
         Expected request data:
@@ -284,7 +345,16 @@ class BankTransferInitView(APIView):
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
-    @swagger_auto_schema(operation_description="Initiate a bank transfer payment for a booking.")
+    @swagger_auto_schema(operation_description="Initiate a bank transfer payment for a booking.",
+                             request_body=openapi.Schema(
+                                 type=openapi.TYPE_OBJECT,
+                                 properties={
+                                     "booking_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                     "amount": openapi.Schema(type=openapi.TYPE_NUMBER, format='float'),
+                                     "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                                 }
+                             ),
+    )
     def post(self, request):
         """Initializes a bank transfer payment for a booking. This endpoint creates a pending payment record and returns the bank details that the user should use to complete the transfer. The user must provide the booking ID, amount, and optionally the currency (default is NGN). An idempotency key is required in the headers to prevent duplicate payments. The response includes the payment details and the bank information needed for the transfer.
         Expected request data:
@@ -408,7 +478,36 @@ class PaymentVerificationView(APIView):
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
-    @swagger_auto_schema(operation_description="Verify a payment by tx_ref.")
+    @swagger_auto_schema(operation_description="Verify a payment by tx_ref.",
+                             request_body=openapi.Schema(
+                                 type=openapi.TYPE_OBJECT,
+                                 properties={
+                                     "tx_ref": openapi.Schema(type=openapi.TYPE_STRING)
+                                 }
+                             ),
+                             responses={
+                                 200: openapi.Schema(
+                                     type=openapi.TYPE_OBJECT,
+                                     properties={
+                                         "message": openapi.Schema(type=openapi.TYPE_STRING),
+                                         "payment": openapi.Schema(
+                                             type=openapi.TYPE_OBJECT,
+                                             properties={
+                                                 "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                 "booking": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                 "amount": openapi.Schema(type=openapi.TYPE_NUMBER, format='float'),
+                                                 "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                                                 "payment_method": openapi.Schema(type=openapi.TYPE_STRING),
+                                                 "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
+                                                 "status": openapi.Schema(type=openapi.TYPE_STRING),
+                                                 "paid_at": openapi.Schema(type=openapi.TYPE_STRING, format='date-time'),
+                                                 "created_at": openapi.Schema(type=openapi.TYPE_STRING, format='date-time'),
+                                             }
+                                         )
+                                     }
+                                    ),
+                             }
+    )
     def post(self, request):
         """Verifies a payment by its transaction reference (tx_ref) using the Flutterwave API. This endpoint checks the payment status and details returned by Flutterwave to ensure that the payment was successful and matches the expected amount and currency. If the payment is verified successfully, it updates the payment record and attaches it to the booking. If verification fails, it marks the payment as failed and updates the booking status accordingly.
         Expected request data:
@@ -501,7 +600,16 @@ class PaymentRedirectView(APIView):
     authentication_classes = []
     permission_classes = []
 
-    @swagger_auto_schema(operation_description="Payment redirect landing page.")
+    @swagger_auto_schema(operation_description="Payment redirect landing page.",
+                             manual_parameters=[
+                                 openapi.Parameter(
+                                     'tx_ref', openapi.IN_QUERY, description="The transaction reference returned by Flutterwave", type=openapi.TYPE_STRING
+                                 ),
+                                 openapi.Parameter(
+                                     'status', openapi.IN_QUERY, description="The status of the payment attempt", type=openapi.TYPE_STRING
+                                 ),
+                             ]
+    )
     def get(self, request):
         """Simple view to handle redirects after payment attempts. It displays the transaction reference and status returned by Flutterwave. This view can be used to show a confirmation message to users after they complete a payment on the Flutterwave platform.
         Expected URL: /payments/redirect/

@@ -19,7 +19,10 @@ from .serializers import FlightBookingSerializer
 
 @method_decorator(
     name="list",
-    decorator=swagger_auto_schema(operation_description="List flight bookings."),
+    decorator=swagger_auto_schema(operation_description="List flight bookings.",
+        request_body=FlightBookingSerializer,
+        responses={201: FlightBookingSerializer}
+    ),
 )
 @method_decorator(
     name="retrieve",
@@ -27,19 +30,32 @@ from .serializers import FlightBookingSerializer
 )
 @method_decorator(
     name="create",
-    decorator=swagger_auto_schema(operation_description="Create a flight booking."),
+    decorator=swagger_auto_schema(
+        operation_description="Create a flight booking.",
+        request_body=FlightBookingSerializer,
+        responses={201: FlightBookingSerializer}
+    ),
 )
 @method_decorator(
     name="update",
-    decorator=swagger_auto_schema(operation_description="Update a flight booking."),
+    decorator=swagger_auto_schema(operation_description="Update a flight booking.",
+        request_body=FlightBookingSerializer,
+        responses={201: FlightBookingSerializer}
+        ),
 )
 @method_decorator(
     name="partial_update",
-    decorator=swagger_auto_schema(operation_description="Partially update a flight booking."),
+    decorator=swagger_auto_schema(operation_description="Partially update a flight booking.",
+        request_body=FlightBookingSerializer,
+        responses={201: FlightBookingSerializer}
+        ),
 )
 @method_decorator(
     name="destroy",
-    decorator=swagger_auto_schema(operation_description="Delete a flight booking."),
+    decorator=swagger_auto_schema(operation_description="Delete a flight booking.",
+        request_body=FlightBookingSerializer,
+        responses={201: FlightBookingSerializer}
+    ),
 )
 class FlightBookingViewSet(viewsets.ModelViewSet):
     """ViewSet for managing flight bookings. Regular users can only see and manage their own flight bookings, while admin users can see and manage all flight bookings. This viewset allows users to create new flight bookings by providing the necessary flight details and handles the retrieval, updating, and deletion of flight bookings based on user permissions.
@@ -160,7 +176,36 @@ class SecureFlightBookingView(APIView):
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
-    @swagger_auto_schema(operation_description="Initiate secure flight booking and return payment link.")
+    @swagger_auto_schema(operation_description="Initiate secure flight booking and return payment link.",
+                         request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["flight_offer", "travelers", "departure_city", "arrival_city", "departure_date", "airline"],
+            properties={
+                "flight_offer": openapi.Schema(type=openapi.TYPE_OBJECT, description="Flight offer from Amadeus"),
+                "travelers": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_OBJECT)),
+                "departure_city": openapi.Schema(type=openapi.TYPE_STRING),
+                "arrival_city": openapi.Schema(type=openapi.TYPE_STRING),
+                "departure_date": openapi.Schema(type=openapi.FORMAT_DATE),
+                "return_date": openapi.Schema(type=openapi.FORMAT_DATE),
+                "airline": openapi.Schema(type=openapi.TYPE_STRING),
+                "passengers": openapi.Schema(type=openapi.TYPE_INTEGER),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Payment link created",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "payment_link": openapi.Schema(type=openapi.TYPE_STRING),
+                        "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
+                        "booking_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                    },
+                ),
+            ),
+            400: "Bad request (missing or invalid data)",
+        },
+    )
     def post(self, request):
         """Endpoint for securely booking a flight. This view handles the entire process of booking a flight, including repricing the flight offer, initiating payment with Flutterwave, creating a unified booking, and returning a payment link to the frontend. It expects the flight offer and traveler details in the request data, and it ensures that all operations are performed atomically to maintain data integrity.
         Expected request data:
@@ -280,7 +325,37 @@ class VerifyFlightPaymentView(APIView):
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
-    @swagger_auto_schema(operation_description="Verify payment and finalize flight booking.")
+    @swagger_auto_schema(operation_description="Verify payment and finalize flight booking.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["tx_ref"],
+            properties={
+                "tx_ref": openapi.Schema(type=openapi.TYPE_STRING, description="Transaction reference"),
+                "flight_offer": openapi.Schema(type=openapi.TYPE_OBJECT, description="Optional flight offer"),
+                "travelers": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_OBJECT)),
+                "departure_city": openapi.Schema(type=openapi.TYPE_STRING),
+                "arrival_city": openapi.Schema(type=openapi.TYPE_STRING),
+                "departure_date": openapi.Schema(type=openapi.FORMAT_DATE),
+                "return_date": openapi.Schema(type=openapi.FORMAT_DATE),
+                "airline": openapi.Schema(type=openapi.TYPE_STRING),
+                "passengers": openapi.Schema(type=openapi.TYPE_INTEGER),
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Flight booked successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "booking_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                    },
+                ),
+            ),
+            400: "Payment verification failed or invalid data",
+            404: "Payment not found",
+        },
+    )
     def post(self, request):
         """Verifies the payment for a flight booking using the transaction reference (tx_ref). This endpoint checks the payment status with Flutterwave, updates the payment record, and if successful, creates the flight order with Amadeus. It also handles various error scenarios such as payment verification failure, amount mismatch, and currency mismatch.
         Expected request data:

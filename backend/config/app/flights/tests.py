@@ -735,7 +735,7 @@ class FlightSecureFlowDataIntegrityTests(TestCase):
         self.assertEqual(payment.currency, "USD")
         self.assertEqual(payment.payment_method, "card")
         self.assertEqual(payment.booking.user, self.user)
-    
+
 class FlightBookingPerformanceTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -758,7 +758,7 @@ class FlightBookingPerformanceTests(TestCase):
         with self.assertNumQueries(5):  # Adjust based on expected queries
             response = self.client.post("/api/flight-bookings/", payload, format="json")
             self.assertEqual(response.status_code, 201)
-    
+
 class FlightSearchPerformanceTests(TestCase):
     def setUp(self):
         self.client = APIClient()

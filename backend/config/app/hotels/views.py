@@ -11,15 +11,37 @@ from app.services.booking_engine import BookingEngine
 from .models import Hotel, HotelReservation
 from .permissions import IsAdminUserType
 from .serializers import HotelReservationSerializer, HotelSerializer
-
+from rest_framework.permissions import IsAuthenticated
+from drf_yasg import openapi
 
 @method_decorator(
     name="list",
-    decorator=swagger_auto_schema(operation_description="List available hotels."),
+    decorator=swagger_auto_schema(operation_description="List available hotels.",
+                                  manual_parameters=[
+                                 openapi.Parameter(
+                                     'city', openapi.IN_QUERY, description="Filter hotels by city", type=openapi.TYPE_STRING
+                                 ),
+                                 openapi.Parameter(
+                                     'check_in', openapi.IN_QUERY, description="Filter hotels available for check-in date (YYYY-MM-DD)", type=openapi.TYPE_STRING
+                                 ),
+                                 openapi.Parameter(
+                                     'check_out', openapi.IN_QUERY, description="Filter hotels available for check-out date (YYYY-MM-DD)", type=openapi.TYPE_STRING
+                                 ),
+                                 openapi.Parameter(
+                                     'guests', openapi.IN_QUERY, description="Filter hotels that can accommodate the specified number of guests", type=openapi.TYPE_INTEGER
+                                 ),
+                             ]
+    )
 )
 @method_decorator(
     name="retrieve",
-    decorator=swagger_auto_schema(operation_description="Retrieve a hotel by ID."),
+    decorator=swagger_auto_schema(operation_description="Retrieve a hotel by ID.",
+                                  manual_parameters=[
+                                 openapi.Parameter(
+                                     'id', openapi.IN_PATH, description="The ID of the hotel to retrieve", type=openapi.TYPE_INTEGER
+                                 ),
+                             ]
+    )
 )
 class HotelViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for listing and retrieving hotels. Both regular users and admin users can access this viewset, but only read operations are allowed.
@@ -33,27 +55,95 @@ class HotelViewSet(viewsets.ReadOnlyModelViewSet):
 
 @method_decorator(
     name="list",
-    decorator=swagger_auto_schema(operation_description="List hotel reservations."),
+    decorator=swagger_auto_schema(operation_description="List hotel reservations.",
+                                  manual_parameters=[
+                                 openapi.Parameter(
+                                     'hotel_id', openapi.IN_QUERY, description="Filter reservations by hotel ID", type=openapi.TYPE_INTEGER
+                                 ),
+                             ]
+    )
 )
 @method_decorator(
     name="retrieve",
-    decorator=swagger_auto_schema(operation_description="Retrieve a hotel reservation by ID."),
+    decorator=swagger_auto_schema(operation_description="Retrieve a hotel reservation by ID.",
+                                  manual_parameters=[
+                                 openapi.Parameter(
+                                     'id', openapi.IN_PATH, description="The ID of the hotel reservation to retrieve", type=openapi.TYPE_INTEGER
+                                 ),
+                             ]
+    )
 )
 @method_decorator(
     name="create",
-    decorator=swagger_auto_schema(operation_description="Create a hotel reservation."),
+    decorator=swagger_auto_schema(operation_description="Create a hotel reservation.",
+                                  request_body=HotelReservationSerializer,
+                                  responses={
+                                 201: openapi.Response(
+                                     description="Hotel reservation created successfully",
+                                     schema=openapi.Schema(
+                                         type=openapi.TYPE_OBJECT,
+                                         properties={
+                                             "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                             "hotel_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                             "check_in": openapi.Schema(type=openapi.TYPE_STRING, format="date"),
+                                             "check_out": openapi.Schema(type=openapi.TYPE_STRING, format="date"),
+                                         }
+                                     )
+                                 ),
+                                 400: "Invalid input data"
+                             }
+    )
 )
 @method_decorator(
     name="update",
-    decorator=swagger_auto_schema(operation_description="Update a hotel reservation."),
+    decorator=swagger_auto_schema(operation_description="Update a hotel reservation.",
+                                  request_body=HotelReservationSerializer,
+                                  responses={
+                                      200: openapi.Response(
+                                          description="Hotel reservation updated successfully",
+                                          schema=openapi.Schema(
+                                              type=openapi.TYPE_OBJECT,
+                                              properties={
+                                                  "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                  "hotel_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                  "check_in": openapi.Schema(type=openapi.TYPE_STRING, format="date"),
+                                                  "check_out": openapi.Schema(type=openapi.TYPE_STRING, format="date"),
+                                              }
+                                          )
+                                      ),
+                                      400: "Invalid input data"
+                                  }
+    ),
 )
 @method_decorator(
     name="partial_update",
-    decorator=swagger_auto_schema(operation_description="Partially update a hotel reservation."),
+    decorator=swagger_auto_schema(operation_description="Partially update a hotel reservation.",
+                                  request_body=HotelReservationSerializer,
+                                    responses={
+                                        200: openapi.Response(
+                                            description="Hotel reservation updated successfully",
+                                            schema=openapi.Schema(
+                                                type=openapi.TYPE_OBJECT,
+                                                properties={
+                                                    "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                    "hotel_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                    "check_in": openapi.Schema(type=openapi.TYPE_STRING, format="date"),
+                                                    "check_out": openapi.Schema(type=openapi.TYPE_STRING, format="date"),
+                                                }
+                                            )
+                                        ),
+                                        400: "Invalid input data"
+                                    }
+                                ),
 )
 @method_decorator(
     name="destroy",
-    decorator=swagger_auto_schema(operation_description="Delete a hotel reservation."),
+    decorator=swagger_auto_schema(operation_description="Delete a hotel reservation.",
+                                  responses={
+                                      204: "Hotel reservation deleted successfully",
+                                      404: "Hotel reservation not found"
+                                  }
+                                ),
 )
 class HotelReservationViewSet(viewsets.ModelViewSet):
     """ViewSet for managing hotel reservations. Regular users can only see and manage their own reservations, while admin users can see and manage all reservations.
@@ -159,27 +249,119 @@ class HotelReservationViewSet(viewsets.ModelViewSet):
 
 @method_decorator(
     name="list",
-    decorator=swagger_auto_schema(operation_description="List hotels (admin)."),
+    decorator=swagger_auto_schema(operation_description="List hotels (admin).",
+                                  manual_parameters=[
+                                 openapi.Parameter(
+                                     'city', openapi.IN_QUERY, description="Filter hotels by city", type=openapi.TYPE_STRING
+                                 ),
+                                 openapi.Parameter(
+                                     'country', openapi.IN_QUERY, description="Filter hotels by country", type=openapi.TYPE_STRING
+                                 ),
+                             ]
+    )
 )
 @method_decorator(
     name="retrieve",
-    decorator=swagger_auto_schema(operation_description="Retrieve a hotel by ID (admin)."),
+    decorator=swagger_auto_schema(operation_description="Retrieve a hotel by ID (admin).",
+                                  manual_parameters=[
+                                 openapi.Parameter(
+                                     'id', openapi.IN_PATH, description="The ID of the hotel to retrieve", type=openapi.TYPE_INTEGER
+                                 ),
+                             ]
+    )
 )
 @method_decorator(
     name="create",
-    decorator=swagger_auto_schema(operation_description="Create a hotel (admin)."),
+    decorator=swagger_auto_schema(operation_description="Create a hotel (admin).",
+                                  request_body=HotelSerializer,
+                                  responses={
+                                 201: openapi.Response(
+                                     description="Hotel created successfully",
+                                     schema=openapi.Schema(
+                                         type=openapi.TYPE_OBJECT,
+                                         properties={
+                                             "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                             "hotel_name": openapi.Schema(type=openapi.TYPE_STRING),
+                                             "city": openapi.Schema(type=openapi.TYPE_STRING),
+                                             "address": openapi.Schema(type=openapi.TYPE_STRING),
+                                             "country": openapi.Schema(type=openapi.TYPE_STRING),
+                                             "price_per_night": openapi.Schema(type=openapi.TYPE_NUMBER, format="float"),
+                                             "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                                             "available_rooms": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                             "description": openapi.Schema(type=openapi.TYPE_STRING),
+                                             "facilities": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                             "images": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                         }
+                                     )
+                                 ),
+                                 400: "Invalid input data"
+                             }
+    )
 )
 @method_decorator(
     name="update",
-    decorator=swagger_auto_schema(operation_description="Update a hotel (admin)."),
+    decorator=swagger_auto_schema(operation_description="Update a hotel (admin).",
+                                  request_body=HotelSerializer,
+                                  responses={
+                                      200: openapi.Response(
+                                          description="Hotel updated successfully",
+                                          schema=openapi.Schema(
+                                              type=openapi.TYPE_OBJECT,
+                                              properties={
+                                                  "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                  "hotel_name": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "city": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "address": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "country": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "price_per_night": openapi.Schema(type=openapi.TYPE_NUMBER, format="float"),
+                                                  "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "available_rooms": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                  "description": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "facilities": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                                  "images": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                              }
+                                          )
+                                      ),
+                                      400: "Invalid input data"
+                                  }
+                                ),
 )
 @method_decorator(
     name="partial_update",
-    decorator=swagger_auto_schema(operation_description="Partially update a hotel (admin)."),
+    decorator=swagger_auto_schema(operation_description="Partially update a hotel (admin).",
+                                  request_body=HotelSerializer,
+                                  responses={
+                                      200: openapi.Response(
+                                          description="Hotel updated successfully",
+                                          schema=openapi.Schema(
+                                              type=openapi.TYPE_OBJECT,
+                                              properties={
+                                                  "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                  "hotel_name": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "city": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "address": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "country": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "price_per_night": openapi.Schema(type=openapi.TYPE_NUMBER, format="float"),
+                                                  "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "available_rooms": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                  "description": openapi.Schema(type=openapi.TYPE_STRING),
+                                                  "facilities": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                                  "images": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                              }
+                                          )
+                                      ),
+                                      400: "Invalid input data"
+                                  }
+                                ),
 )
 @method_decorator(
     name="destroy",
-    decorator=swagger_auto_schema(operation_description="Delete a hotel (admin)."),
+    decorator=swagger_auto_schema(operation_description="Delete a hotel (admin).",
+                                  responses={
+                                      204: "Hotel deleted successfully",
+                                      404: "Hotel not found"
+                                  }
+                                ),
 )
 class AdminHotelViewSet(viewsets.ModelViewSet):
     """This viewset is for admin users to manage hotels. It includes additional endpoints for backward compatibility with some clients.
@@ -197,7 +379,31 @@ class AdminHotelViewSet(viewsets.ModelViewSet):
     # Backward-compatible endpoints used by some clients
     # /hotels/create_hotel/
     @action(detail=False, methods=["post"], url_path="create_hotel")
-    @swagger_auto_schema(operation_description="Create a hotel (legacy admin endpoint).")
+    @swagger_auto_schema(operation_description="Create a hotel (legacy admin endpoint).",
+                             request_body=HotelSerializer,
+                             responses={
+                                 201: openapi.Response(
+                                        description="Hotel created successfully",
+                                        schema=openapi.Schema(
+                                            type=openapi.TYPE_OBJECT,
+                                            properties={
+                                                "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                "hotel_name": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "city": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "address": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "country": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "price_per_night": openapi.Schema(type=openapi.TYPE_NUMBER, format="float"),
+                                                "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "available_rooms": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                "description": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "facilities": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                                "images": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                            }
+                                        )
+                                    ),
+                                 400: "Invalid input data"
+                                }
+                            )
     def create_hotel(self, request):
         """Expected request data:
         {
@@ -219,7 +425,35 @@ class AdminHotelViewSet(viewsets.ModelViewSet):
 
     # /hotels/get_hotel/<hotel_id>/
     @action(detail=False, methods=["get"], url_path="get_hotel/(?P<hotel_id>[^/.]+)")
-    @swagger_auto_schema(operation_description="Retrieve a hotel by ID (legacy admin endpoint).")
+    @swagger_auto_schema(operation_description="Retrieve a hotel by ID (legacy admin endpoint).",
+                             manual_parameters=[
+                                 openapi.Parameter(
+                                     'hotel_id', openapi.IN_PATH, description="The ID of the hotel to retrieve", type=openapi.TYPE_INTEGER
+                                 ),
+                             ],
+                             responses={
+                                 200: openapi.Response(
+                                        description="Hotel retrieved successfully",
+                                        schema=openapi.Schema(
+                                            type=openapi.TYPE_OBJECT,
+                                            properties={
+                                                "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                "hotel_name": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "city": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "address": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "country": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "price_per_night": openapi.Schema(type=openapi.TYPE_NUMBER, format="float"),
+                                                "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "available_rooms": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                "description": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "facilities": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                                "images": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                            }
+                                        )
+                                    ),
+                                 404: "Hotel not found"
+                                }
+                            )
     def get_hotel(self, request, hotel_id=None):
         """Expected URL: /hotels/get_hotel/1/
         This endpoint is used by some clients that expect a specific URL for fetching a hotel by ID.
@@ -232,7 +466,32 @@ class AdminHotelViewSet(viewsets.ModelViewSet):
 
     # /hotels/get_all_hotels/
     @action(detail=False, methods=["get"], url_path="get_all_hotels")
-    @swagger_auto_schema(operation_description="List all hotels (legacy admin endpoint).")
+    @swagger_auto_schema(operation_description="List all hotels (legacy admin endpoint).",
+                             responses={
+                                 200: openapi.Response(
+                                        description="List of hotels retrieved successfully",
+                                        schema=openapi.Schema(
+                                            type=openapi.TYPE_ARRAY,
+                                            items=openapi.Schema(
+                                                type=openapi.TYPE_OBJECT,
+                                                properties={
+                                                    "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                    "hotel_name": openapi.Schema(type=openapi.TYPE_STRING),
+                                                    "city": openapi.Schema(type=openapi.TYPE_STRING),
+                                                    "address": openapi.Schema(type=openapi.TYPE_STRING),
+                                                    "country": openapi.Schema(type=openapi.TYPE_STRING),
+                                                    "price_per_night": openapi.Schema(type=openapi.TYPE_NUMBER, format="float"),
+                                                    "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                                                    "available_rooms": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                    "description": openapi.Schema(type=openapi.TYPE_STRING),
+                                                    "facilities": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                                    "images": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING)),
+                                                }
+                                            )
+                                        )
+                                    ),
+                             }
+    )
     def get_all_hotels(self, request):
         """Expected URL: /hotels/get_all_hotels/
         This endpoint is used by some clients that expect a specific URL for fetching all hotels.
