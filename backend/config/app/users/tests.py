@@ -22,7 +22,7 @@ class UserRegistrationTest(TestCase):
     def test_user_registration(self):
         from rest_framework.test import APIClient
         client = APIClient()
-        response = client.post("/users/register/", {
+        response = client.post("/api/users/register/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -43,7 +43,7 @@ class UserLoginTest(TestCase):
     def test_user_login(self):
         from rest_framework.test import APIClient
         client = APIClient()
-        response = client.post("/token/", {
+        response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -67,7 +67,7 @@ class UserProfileTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -76,7 +76,7 @@ class UserProfileTest(TestCase):
 
         # Then, use the token to fetch the user profile
         client.credentials(HTTP_AUTHORIZATION="Bearer " + token)
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)
         self.assertEqual(profile_response.data["email"], "test@example.com")
         self.assertEqual(profile_response.data["user_type"], "regular")
@@ -95,7 +95,7 @@ class UserLogoutTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -104,12 +104,12 @@ class UserLogoutTest(TestCase):
 
         # Then, use the token to log out
         client.credentials(HTTP_AUTHORIZATION="Bearer " + token)
-        logout_response = client.post("/users/logout/")
+        logout_response = client.post("/api/users/logout/")
         self.assertEqual(logout_response.status_code, 200)
 
         self.assertEqual(logout_response.data["detail"], "Logout successful")
         # Try to access the profile again, should fail
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 401)
 
 class UserRegistrationThrottleTest(TestCase):
@@ -117,7 +117,7 @@ class UserRegistrationThrottleTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         for i in range(6):  # Exceed the throttle limit of 5/minute
-            response = client.post("/users/register/", {
+            response = client.post("/api/users/register/", {
                 "email": f"test{i}@example.com",
                 "password": "testpassword"
             })
@@ -134,7 +134,7 @@ class UserLoginThrottleTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         for i in range(6):  # Exceed the throttle limit of 5/minute
-            response = client.post("/token/", {
+            response = client.post("/api/token/", {
                 "email": "test@example.com",
                 "password": "testpassword"
             })
@@ -145,7 +145,7 @@ class UserIPThrottleTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         for i in range(6):  # Exceed the throttle limit of 5/minute
-            response = client.post("/token/", {
+            response = client.post("/api/token/", {
                 "email": f"test{i}@example.com",
                 "password": "testpassword"
             })
@@ -167,7 +167,7 @@ class UserProfileDataTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -175,7 +175,7 @@ class UserProfileDataTest(TestCase):
         token = login_response.data["access"]
         # Then, use the token to fetch the user profile
         client.credentials(HTTP_AUTHORIZATION="Bearer " + token)
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)
         self.assertEqual(profile_response.data["email"], "test@example.com")
         self.assertEqual(profile_response.data["user_type"], "agent")
@@ -195,7 +195,7 @@ class UserLogoutInvalidTokenTest(TestCase):
         client = APIClient()
         # Try to log out with an invalid token
         client.credentials(HTTP_AUTHORIZATION="Bearer " + "invalidtoken")
-        logout_response = client.post("/users/logout/")
+        logout_response = client.post("/api/users/logout/")
         self.assertEqual(logout_response.status_code, 401)  # Unauthorized due to invalid token
         self.assertEqual(logout_response.data["detail"], "Invalid token")
 
@@ -210,7 +210,7 @@ class UserLogoutNoTokenTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # Try to log out without providing a token
-        logout_response = client.post("/users/logout/")
+        logout_response = client.post("/api/users/logout/")
         self.assertEqual(logout_response.status_code, 401)  # Unauthorized due to missing token
         self.assertEqual(logout_response.data["detail"], "Authentication credentials were not provided.")
 
@@ -219,7 +219,7 @@ class UserProfileUnauthorizedTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # Try to access the profile without logging in
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to missing token
         self.assertEqual(profile_response.data["detail"], "Authentication credentials were not provided.")
 
@@ -229,7 +229,7 @@ class UserProfileInvalidTokenTest(TestCase):
         client = APIClient()
         # Try to access the profile with an invalid token
         client.credentials(HTTP_AUTHORIZATION="Bearer " + "invalidtoken")
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to invalid token
         self.assertEqual(profile_response.data["detail"], "Invalid token")
 
@@ -238,13 +238,13 @@ class UserRegistrationInvalidDataTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # Try to register with missing email
-        response = client.post("/users/register/", {
+        response = client.post("/api/users/register/", {
             "password": "testpassword"
         })
         self.assertEqual(response.status_code, 400)  # Bad request due to missing email
         self.assertIn("email", response.data)
         # Try to register with missing password
-        response = client.post("/users/register/", {
+        response = client.post("/api/users/register/", {
             "email": "test@example.com"
         })
         self.assertEqual(response.status_code, 400)  # Bad request due to missing password
@@ -261,13 +261,13 @@ class UserLoginInvalidDataTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # Try to log in with missing email
-        response = client.post("/token/", {
+        response = client.post("/api/token/", {
             "password": "testpassword"
         })
         self.assertEqual(response.status_code, 400)  # Bad request due to missing email
         self.assertIn("email", response.data)
         # Try to log in with missing password
-        response = client.post("/token/", {
+        response = client.post("/api/token/", {
             "email": "test@example.com"
         })
         self.assertEqual(response.status_code, 400)  # Bad request due to missing password
@@ -284,14 +284,14 @@ class UserLoginInvalidCredentialsTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # Try to log in with incorrect password
-        response = client.post("/token/", {
+        response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "wrongpassword"
         })
         self.assertEqual(response.status_code, 401)  # Unauthorized due to invalid credentials
         self.assertEqual(response.data["detail"], "Invalid email or password")
         # Try to log in with non-existent email
-        response = client.post("/token/", {
+        response = client.post("/api/token/", {
             "email": "nonexistent@example.com",
             "password": "testpassword"
         })
@@ -309,7 +309,7 @@ class UserLogoutInvalidRefreshTokenTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -318,7 +318,7 @@ class UserLogoutInvalidRefreshTokenTest(TestCase):
 
         # Try to log out with an invalid refresh token
         client.credentials(HTTP_AUTHORIZATION="Bearer " + refresh_token)
-        logout_response = client.post("/users/logout/")
+        logout_response = client.post("/api/users/logout/")
         self.assertEqual(logout_response.status_code, 401)  # Unauthorized due to invalid refresh token
         self.assertEqual(logout_response.data["detail"], "Invalid refresh token")
 
@@ -333,7 +333,7 @@ class UserLogoutMissingRefreshTokenTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -341,7 +341,7 @@ class UserLogoutMissingRefreshTokenTest(TestCase):
         refresh_token = login_response.data["refresh"]
 
         # Try to log out without providing a refresh token
-        logout_response = client.post("/users/logout/")
+        logout_response = client.post("/api/users/logout/")
         self.assertEqual(logout_response.status_code, 401)  # Unauthorized due to missing refresh token
         self.assertEqual(logout_response.data["detail"], "Refresh token is required")
 
@@ -356,7 +356,7 @@ class UserLogoutInvalidTokenFormatTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -365,7 +365,7 @@ class UserLogoutInvalidTokenFormatTest(TestCase):
 
         # Try to log out with an invalid refresh token format
         client.credentials(HTTP_AUTHORIZATION="Bearer " + refresh_token)
-        logout_response = client.post("/users/logout/")
+        logout_response = client.post("/api/users/logout/")
         self.assertEqual(logout_response.status_code, 401)  # Unauthorized due to invalid refresh token
         self.assertEqual(logout_response.data["detail"], "Invalid refresh token")
 
@@ -380,7 +380,7 @@ class UserProfileInvalidCountryTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -389,7 +389,7 @@ class UserProfileInvalidCountryTest(TestCase):
 
         # Try to update profile with an invalid country
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "country": "InvalidCountry"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid country
@@ -406,7 +406,7 @@ class UserProfileMissingCountryTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -415,7 +415,7 @@ class UserProfileMissingCountryTest(TestCase):
 
         # Try to update profile without providing a country
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "name": "Test User"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing country
@@ -432,7 +432,7 @@ class UserProfileInvalidPhoneNumberTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -441,7 +441,7 @@ class UserProfileInvalidPhoneNumberTest(TestCase):
 
         # Try to update profile with an invalid phone number
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "phone_number": "invalid-phone-number"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid phone number
@@ -458,7 +458,7 @@ class UserProfileMissingPhoneNumberTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -466,7 +466,7 @@ class UserProfileMissingPhoneNumberTest(TestCase):
         access_token = login_response.data["access"]
         # Try to update profile without providing a phone number
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "name": "Test User"
         })
         self.assertEqual(profile_response.status_code, 200)  # Successful update without phone number
@@ -483,7 +483,7 @@ class UserProfileInvalidChurchTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -492,7 +492,7 @@ class UserProfileInvalidChurchTest(TestCase):
 
         # Try to update profile with an invalid church
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "church": "Invalid Church"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid church
@@ -509,7 +509,7 @@ class UserProfileMissingChurchTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -518,7 +518,7 @@ class UserProfileMissingChurchTest(TestCase):
 
         # Try to update profile without providing a church
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "name": "Test User"
         })
         self.assertEqual(profile_response.status_code, 200)  # Successful update without church
@@ -535,7 +535,7 @@ class UserProfileInvalidZoneTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -544,7 +544,7 @@ class UserProfileInvalidZoneTest(TestCase):
 
         # Try to update profile with an invalid zone
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "zone": "Invalid Zone"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid zone
@@ -561,7 +561,7 @@ class UserProfileMissingZoneTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -570,7 +570,7 @@ class UserProfileMissingZoneTest(TestCase):
 
         # Try to update profile without providing a zone
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "name": "Test User"
         })
         self.assertEqual(profile_response.status_code, 200)  # Successful update without zone
@@ -587,7 +587,7 @@ class UserProfileInvalidDataTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -596,7 +596,7 @@ class UserProfileInvalidDataTest(TestCase):
 
         # Try to update profile with invalid data
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "name": ""  # Invalid name (empty string)
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid data
@@ -613,7 +613,7 @@ class UserProfileValidDataTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -622,7 +622,7 @@ class UserProfileValidDataTest(TestCase):
 
         # Try to update profile with valid data
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "name": "Test User"
         })
         self.assertEqual(profile_response.status_code, 200)  # Successful update with valid data
@@ -639,7 +639,7 @@ class UserProfileNoChangesTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "test@example.com",
             "password": "testpassword"
         })
@@ -648,7 +648,7 @@ class UserProfileNoChangesTest(TestCase):
 
         # Try to update profile without making any changes
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "name": "Test User"
         })
         self.assertEqual(profile_response.status_code, 200)  # Successful update with no changes
@@ -660,7 +660,7 @@ class UserProfileInvalidTokenTest(TestCase):
         client = APIClient()
         # Try to access the profile with an invalid token
         client.credentials(HTTP_AUTHORIZATION="Bearer " + "invalidtoken")
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to invalid token
         self.assertEqual(profile_response.data["detail"], "Invalid token")
 
@@ -669,7 +669,7 @@ class UserProfileMissingTokenTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # Try to access the profile without providing a token
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to missing token
         self.assertEqual(profile_response.data["detail"], "Authentication credentials were not provided.")
 
@@ -679,7 +679,7 @@ class UserProfileNonExistentUserTest(TestCase):
         client = APIClient()
         # Try to access the profile of a non-existent user
         client.credentials(HTTP_AUTHORIZATION="Bearer " + "nonexistenttoken")
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to invalid token
         self.assertEqual(profile_response.data["detail"], "Invalid token")
 
@@ -697,7 +697,7 @@ class UserProfileInactiveUserTest(TestCase):
         client = APIClient()
         # Try to access the profile of an inactive user
         client.credentials(HTTP_AUTHORIZATION="Bearer " + "inactivetoken")
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to invalid token
         self.assertEqual(profile_response.data["detail"], "Invalid token")
 
@@ -713,7 +713,7 @@ class UserProfileAdminUserTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "admin@example.com",
             "password": "adminpassword"
         })
@@ -721,7 +721,7 @@ class UserProfileAdminUserTest(TestCase):
         access_token = login_response.data["access"]
         # Try to access the profile of an admin user
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)  # Successful access to admin profile
         self.assertEqual(profile_response.data["email"], "admin@example.com")
         self.assertEqual(profile_response.data["user_type"], "regular")  # Admin users are still regular type
@@ -741,7 +741,7 @@ class UserProfileAgentUserTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "agent@example.com",
             "password": "agentpassword"
         })
@@ -749,7 +749,7 @@ class UserProfileAgentUserTest(TestCase):
         access_token = login_response.data["access"]
         # Try to access the profile of an agent user
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)  # Successful access to agent profile
         self.assertEqual(profile_response.data["email"], "agent@example.com")
         self.assertEqual(profile_response.data["user_type"], "agent")
@@ -769,7 +769,7 @@ class UserProfileRegularUserTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "regular@example.com",
             "password": "regularpassword"
         })
@@ -777,7 +777,7 @@ class UserProfileRegularUserTest(TestCase):
         access_token = login_response.data["access"]
         # Try to access the profile of a regular user
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)  # Successful access to regular profile
         self.assertEqual(profile_response.data["email"], "regular@example.com")
         self.assertEqual(profile_response.data["user_type"], "regular")
@@ -797,7 +797,7 @@ class UserProfileMultipleUpdatesTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "multiple@example.com",
             "password": "multiplepassword"
         })
@@ -805,7 +805,7 @@ class UserProfileMultipleUpdatesTest(TestCase):
         access_token = login_response.data["access"]
         # Try to access the profile of a regular user
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)  # Successful access to regular profile
         self.assertEqual(profile_response.data["email"], "multiple@example.com")
         self.assertEqual(profile_response.data["user_type"], "regular")
@@ -825,7 +825,7 @@ class UserProfileDataPersistenceTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/users/login/", {
+        login_response = client.post("/api/token/", {
             "email": "persistence@example.com",
             "password": "persistencepassword"
         })
@@ -833,7 +833,7 @@ class UserProfileDataPersistenceTest(TestCase):
         access_token = login_response.data["access"]
         # Try to access the profile of a regular user
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)  # Successful access to regular profile
         self.assertEqual(profile_response.data["email"], "persistence@example.com")
         self.assertEqual(profile_response.data["user_type"], "regular")
@@ -853,7 +853,7 @@ class UserProfileDataUpdateTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "update@example.com",
             "password": "updatepassword"
         })
@@ -861,7 +861,7 @@ class UserProfileDataUpdateTest(TestCase):
         access_token = login_response.data["access"]
         # Try to access the profile of a regular user
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.get("/users/profile/")
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)  # Successful access to regular profile
         self.assertEqual(profile_response.data["email"], "update@example.com")
         self.assertEqual(profile_response.data["user_type"], "regular")
@@ -869,7 +869,7 @@ class UserProfileDataUpdateTest(TestCase):
         self.assertEqual(profile_response.data["church"], None)
         self.assertEqual(profile_response.data["zone"], None)
         # Update the profile with new data
-        update_response = client.patch("/users/profile/", {
+        update_response = client.patch("/api/users/profile/", {
             "phone_number": "1234567890",
             "church": "Test Church",
             "zone": "Test Zone"
@@ -878,7 +878,7 @@ class UserProfileDataUpdateTest(TestCase):
         self.assertEqual(update_response.data["phone_number"], "1234567890")
         self.assertEqual(update_response.data["church"], "Test Church")
         self.assertEqual(update_response.data["zone"], "Test Zone")
-        # Verify that the updated data is persisted        profile_response = client.get("/users/profile/")
+        # Verify that the updated data is persisted        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)  # Successful access to regular profile
         self.assertEqual(profile_response.data["email"], "update@example.com")
         self.assertEqual(profile_response.data["user_type"], "regular")
@@ -898,7 +898,7 @@ class UserProfileDataValidationTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "validation@example.com",
             "password": "validationpassword"
         })
@@ -906,17 +906,17 @@ class UserProfileDataValidationTest(TestCase):
         access_token = login_response.data["access"]
         # Try to update profile with invalid data
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "phone_number": "invalid-phone-number"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid phone number
         self.assertEqual(profile_response.data["detail"], "Invalid phone number")
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "church": ""  # Invalid church (empty string)
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid church
         self.assertEqual(profile_response.data["detail"], "Invalid church")
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "zone": ""  # Invalid zone (empty string)
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid zone
@@ -934,7 +934,7 @@ class UserProfileDataValidationMissingFieldsTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "missingfields@example.com",
             "password": "missingfieldspassword"
         })
@@ -942,17 +942,17 @@ class UserProfileDataValidationMissingFieldsTest(TestCase):
         access_token = login_response.data["access"]
         # Try to update profile with missing fields
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "phone_number": "1234567890"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing fields
         self.assertEqual(profile_response.data["detail"], "Church and zone are required when phone number is provided")
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "church": "Test Church"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing zone
         self.assertEqual(profile_response.data["detail"], "Zone is required when phone number is provided")
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "zone": "Test Zone"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing church
@@ -971,7 +971,7 @@ class UserProfileDataValidationTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "validation@example.com",
             "password": "validationpassword"
         })
@@ -979,17 +979,17 @@ class UserProfileDataValidationTest(TestCase):
         access_token = login_response.data["access"]
         # Try to update profile with invalid data
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "phone_number": "invalid-phone-number"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid phone number
         self.assertEqual(profile_response.data["detail"], "Invalid phone number")
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "church": ""  # Invalid church (empty string)
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid church
         self.assertEqual(profile_response.data["detail"], "Invalid church")
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "zone": ""  # Invalid zone (empty string)
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid zone
@@ -1007,7 +1007,7 @@ class UserProfileDataValidationMissingFieldsTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "missingfields@example.com",
             "password": "missingfieldspassword"
         })
@@ -1015,17 +1015,17 @@ class UserProfileDataValidationMissingFieldsTest(TestCase):
         access_token = login_response.data["access"]
         # Try to update profile with missing fields
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "phone_number": "1234567890"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing fields
         self.assertEqual(profile_response.data["detail"], "Church and zone are required when phone number is provided")
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "church": "Test Church"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing
         self.assertEqual(profile_response.data["detail"], "Zone is required when phone number is provided")
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "zone": "Test Zone"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing
@@ -1043,7 +1043,7 @@ class UserProfileDataValidationSuccessTest(TestCase):
         from rest_framework.test import APIClient
         client = APIClient()
         # First, log in to get the token
-        login_response = client.post("/token/", {
+        login_response = client.post("/api/token/", {
             "email": "success@example.com",
             "password": "successpassword"
         })
@@ -1051,7 +1051,7 @@ class UserProfileDataValidationSuccessTest(TestCase):
         access_token = login_response.data["access"]
         # Try to update profile with valid data
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
-        profile_response = client.patch("/users/profile/", {
+        profile_response = client.patch("/api/users/profile/", {
             "phone_number": "1234567890",
             "church": "Test Church",
             "zone": "Test Zone"
