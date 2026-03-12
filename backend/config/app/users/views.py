@@ -178,7 +178,7 @@ class ProfileView(APIView):
         if "country" in data:
             if not country:
                 return Response({"detail": "Country is required"}, status=400)
-            if not countries.lookup(country):
+            if country not in countries:
                 return Response({"detail": "Invalid country"}, status=400)
 
         phone_number = data.get("phone_number")

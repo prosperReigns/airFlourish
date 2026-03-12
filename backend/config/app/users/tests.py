@@ -48,6 +48,7 @@ class UserRegistrationTest(BaseTestCase):
 
 class UserLoginTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -71,6 +72,7 @@ class UserLoginTest(BaseTestCase):
 
 class UserProfileTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -100,6 +102,7 @@ class UserProfileTest(BaseTestCase):
     
 class UserLogoutTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -114,7 +117,8 @@ class UserLogoutTest(BaseTestCase):
             "password": "testpassword"
         })
         self.assertEqual(login_response.status_code, 200)
-        token = login_response.data["access"]
+        access_token = login_response.data["access"]
+        refresh_token = login_response.data["refresh"]
 
         # Then, use the token to log out
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
@@ -142,6 +146,7 @@ class UserRegistrationThrottleTest(BaseTestCase):
 
 class UserLoginThrottleTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -170,6 +175,7 @@ class UserIPThrottleTest(BaseTestCase):
 
 class UserProfileDataTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -202,6 +208,7 @@ class UserProfileDataTest(BaseTestCase):
 
 class UserLogoutInvalidTokenTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -218,6 +225,7 @@ class UserLogoutInvalidTokenTest(BaseTestCase):
 
 class UserLogoutNoTokenTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -271,6 +279,7 @@ class UserRegistrationInvalidDataTest(BaseTestCase):
 
 class UserLoginInvalidDataTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -294,6 +303,7 @@ class UserLoginInvalidDataTest(BaseTestCase):
 
 class UserLoginInvalidCredentialsTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -319,6 +329,7 @@ class UserLoginInvalidCredentialsTest(BaseTestCase):
 
 class UserLogoutInvalidRefreshTokenTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -343,6 +354,7 @@ class UserLogoutInvalidRefreshTokenTest(BaseTestCase):
 
 class UserLogoutMissingRefreshTokenTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -367,6 +379,7 @@ class UserLogoutMissingRefreshTokenTest(BaseTestCase):
 
 class UserLogoutInvalidTokenFormatTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -391,6 +404,7 @@ class UserLogoutInvalidTokenFormatTest(BaseTestCase):
 
 class UserProfileInvalidCountryTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -417,6 +431,7 @@ class UserProfileInvalidCountryTest(BaseTestCase):
 
 class UserProfileMissingCountryTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -443,6 +458,7 @@ class UserProfileMissingCountryTest(BaseTestCase):
 
 class UserProfileInvalidPhoneNumberTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -469,6 +485,7 @@ class UserProfileInvalidPhoneNumberTest(BaseTestCase):
     
 class UserProfileMissingPhoneNumberTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -494,6 +511,7 @@ class UserProfileMissingPhoneNumberTest(BaseTestCase):
 
 class UserProfileInvalidChurchTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -520,6 +538,7 @@ class UserProfileInvalidChurchTest(BaseTestCase):
 
 class UserProfileMissingChurchTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -546,6 +565,7 @@ class UserProfileMissingChurchTest(BaseTestCase):
 
 class UserProfileInvalidZoneTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -572,6 +592,7 @@ class UserProfileInvalidZoneTest(BaseTestCase):
 
 class UserProfileMissingZoneTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -598,6 +619,7 @@ class UserProfileMissingZoneTest(BaseTestCase):
 
 class UserProfileInvalidDataTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -624,6 +646,7 @@ class UserProfileInvalidDataTest(BaseTestCase):
 
 class UserProfileValidDataTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -650,6 +673,7 @@ class UserProfileValidDataTest(BaseTestCase):
 
 class UserProfileNoChangesTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -705,6 +729,7 @@ class UserProfileNonExistentUserTest(BaseTestCase):
 
 class UserProfileInactiveUserTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="test@example.com",
@@ -723,6 +748,7 @@ class UserProfileInactiveUserTest(BaseTestCase):
 
 class UserProfileAdminUserTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="admin@example.com",
@@ -751,6 +777,7 @@ class UserProfileAdminUserTest(BaseTestCase):
 
 class UserProfileAgentUserTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="agent@example.com",
@@ -779,6 +806,7 @@ class UserProfileAgentUserTest(BaseTestCase):
 
 class UserProfileRegularUserTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="regular@example.com",
@@ -807,6 +835,7 @@ class UserProfileRegularUserTest(BaseTestCase):
 
 class UserProfileMultipleUpdatesTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="multiple@example.com",
@@ -835,6 +864,7 @@ class UserProfileMultipleUpdatesTest(BaseTestCase):
 
 class UserProfileDataPersistenceTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="persistence@example.com",
@@ -863,6 +893,7 @@ class UserProfileDataPersistenceTest(BaseTestCase):
 
 class UserProfileDataUpdateTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="update@example.com",
@@ -898,7 +929,8 @@ class UserProfileDataUpdateTest(BaseTestCase):
         self.assertEqual(update_response.data["phone_number"], "1234567890")
         self.assertEqual(update_response.data["church"], "Test Church")
         self.assertEqual(update_response.data["zone"], "Test Zone")
-        # Verify that the updated data is persisted        profile_response = client.get("/api/users/profile/")
+        # Verify that the updated data is persisted
+        profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)  # Successful access to regular profile
         self.assertEqual(profile_response.data["email"], "update@example.com")
         self.assertEqual(profile_response.data["user_type"], "regular")
@@ -908,6 +940,7 @@ class UserProfileDataUpdateTest(BaseTestCase):
 
 class UserProfileDataValidationTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="validation@example.com",
@@ -944,6 +977,7 @@ class UserProfileDataValidationTest(BaseTestCase):
 
 class UserProfileDataValidationMissingFieldsTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="missingfields@example.com",
@@ -979,10 +1013,10 @@ class UserProfileDataValidationMissingFieldsTest(BaseTestCase):
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing church
         self.assertEqual(profile_response.data["detail"], "Church is required when phone number is provided")
-        self.assertEqual(profile_response.data["detail"], "Church is required when phone number is provided")
 
 class UserProfileDataValidationTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="validation@example.com",
@@ -1019,6 +1053,7 @@ class UserProfileDataValidationTest(BaseTestCase):
 
 class UserProfileDataValidationMissingFieldsTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="missingfields@example.com",
@@ -1057,6 +1092,7 @@ class UserProfileDataValidationMissingFieldsTest(BaseTestCase):
 
 class UserProfileDataValidationSuccessTest(BaseTestCase):
     def setUp(self):
+        super().setUp()
         from .models import User
         self.user = User.objects.create_user(
             email="success@example.com",
@@ -1102,6 +1138,7 @@ class RegisterSerializerTests(BaseTestCase):
 
 class UserProfileSerializerTests(BaseTestCase):
     def setUp(self):
+        super().setUp()
         User = get_user_model()
         self.user = User.objects.create_user(
             email="profileserializer@example.com",
