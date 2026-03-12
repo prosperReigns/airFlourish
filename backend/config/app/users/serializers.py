@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 User = get_user_model()
@@ -27,7 +28,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             "country",
             "church",
             "zone",
+            'user_type'
         ]
+        read_only_fields = ["user_type"]
         extra_kwargs = {
             "first_name": {"required": False, "allow_blank": True},
             "last_name": {"required": False, "allow_blank": True},
@@ -71,16 +74,22 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             "password": "securepassword"
         }
         """
-        data = super().validate(attrs)
+        try:
+            data = super().validate(attrs)
+        except AuthenticationFailed:
+            raise AuthenticationFailed("Invalid email or password")
 
         data["user_type"] = self.user.user_type
         data["email"] = self.user.email
         data["first_name"] = self.user.first_name
         data["last_name"] = self.user.last_name
-        data["country"] = {
-            "code": str(self.user.country.code),
-            "name": str(self.user.country.name)
-        }
+        if self.user.country:
+            data["country"] = {
+                "code": str(self.user.country.code),
+                "name": str(self.user.country.name),
+            }
+        else:
+            data["country"] = None
         data["phone_number"] = self.user.phone_number
         data["church"] = self.user.church
         data["zone"] = self.user.zone
@@ -90,12 +99,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     """Serializer for user profile information. This serializer is used for retrieving the authenticated user's profile details. The country field is represented as a nested object with code and name."""
     country = serializers.SerializerMethodField()
+    name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             "id",
             "email",
+            "name",
             "first_name",
             "last_name",
             "country",
@@ -113,7 +124,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "name": "United States"
         }
         """
+        if not obj.country:
+            return None
         return {
             "code": str(obj.country.code),
-            "name": str(obj.country.name)
+            "name": str(obj.country.name),
         }
+
+    def get_name(self, obj):
+        if obj.first_name and obj.last_name:
+            return f"{obj.first_name} {obj.last_name}".strip()
+        return obj.first_name or ""

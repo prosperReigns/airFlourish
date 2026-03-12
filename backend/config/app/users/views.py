@@ -1,4 +1,8 @@
+import re
+
 from django.shortcuts import render
+from django.core.cache import cache
+from django_countries import countries
 
 from django.utils.decorators import method_decorator
 from rest_framework import generics
@@ -10,9 +14,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .throttles import IPRateThrottle
+from .authentication import BLACKLIST_PREFIX
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
@@ -160,6 +166,65 @@ class ProfileView(APIView):
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data)
 
+    def patch(self, request):
+        user = request.user
+        data = request.data or {}
+
+        name = data.get("name")
+        if name is not None and not str(name).strip():
+            return Response({"detail": "Invalid data"}, status=400)
+
+        country = data.get("country")
+        if "country" in data:
+            if not country:
+                return Response({"detail": "Country is required"}, status=400)
+            if not countries.lookup(country):
+                return Response({"detail": "Invalid country"}, status=400)
+
+        phone_number = data.get("phone_number")
+        church = data.get("church")
+        zone = data.get("zone")
+
+        if phone_number is not None:
+            if not re.fullmatch(r"\+?\d{7,15}", str(phone_number)):
+                return Response({"detail": "Invalid phone number"}, status=400)
+            if not church and not zone:
+                return Response(
+                    {"detail": "Church and zone are required when phone number is provided"},
+                    status=400,
+                )
+            if not zone:
+                return Response(
+                    {"detail": "Zone is required when phone number is provided"},
+                    status=400,
+                )
+            if not church:
+                return Response(
+                    {"detail": "Church is required when phone number is provided"},
+                    status=400,
+                )
+
+        if church is not None and church == "":
+            return Response({"detail": "Invalid church"}, status=400)
+
+        if zone is not None and zone == "":
+            return Response({"detail": "Invalid zone"}, status=400)
+
+        if name is not None:
+            user.first_name = name
+        if "country" in data:
+            user.country = country
+        if phone_number is not None:
+            user.phone_number = phone_number
+        if church is not None:
+            user.church = church
+        if zone is not None:
+            user.zone = zone
+
+        user.save()
+        serializer = UserProfileSerializer(user)
+        return Response(serializer.data)
+
 #users/logout/
 class LogoutView(APIView):
     """Endpoint for logging out users by blacklisting their refresh tokens.
@@ -191,10 +256,21 @@ class LogoutView(APIView):
         """
         refresh_token = request.data.get("refresh")
         if not refresh_token:
-            return Response({"error": "Refresh token required"}, status=400)
+            return Response({"detail": "Refresh token is required"}, status=401)
         try:
             token = RefreshToken(refresh_token)
             token.blacklist()
-            return Response({"detail": "Logout successful"}, status=205)
-        except Exception:
-            return Response({"error": "Invalid refresh token"}, status=400)
+        except TokenError:
+            return Response({"detail": "Invalid refresh token"}, status=401)
+
+        access_token = request.auth
+        if access_token is not None:
+            jti = access_token.get("jti")
+            if jti:
+                cache.set(
+                    f"{BLACKLIST_PREFIX}{jti}",
+                    True,
+                    timeout=int(access_token.lifetime.total_seconds()),
+                )
+
+        return Response({"detail": "Logout successful"}, status=200)

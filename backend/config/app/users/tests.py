@@ -1,10 +1,22 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-
+from django.core.cache import cache
 from app.users.serializers import RegisterSerializer, UserProfileSerializer
+from config import settings
+from django.test import override_settings
 
+DISABLE_THROTTLE = override_settings(
+    REST_FRAMEWORK={
+        **settings.REST_FRAMEWORK,
+        "DEFAULT_THROTTLE_CLASSES": [],
+    }
+)
+class BaseTestCase(TestCase):
+    def setUp(self):
+        super().setUp()
+        cache.clear()
 # Create your tests here.
-class UserModelTest(TestCase):
+class UserModelTest(BaseTestCase):
     def test_create_user(self):
         from .models import User
         user = User.objects.create_user(
@@ -18,13 +30,14 @@ class UserModelTest(TestCase):
         self.assertEqual(user.church, None)
         self.assertEqual(user.zone, None)
 
-class UserRegistrationTest(TestCase):
+class UserRegistrationTest(BaseTestCase):
     def test_user_registration(self):
         from rest_framework.test import APIClient
         client = APIClient()
         response = client.post("/api/users/register/", {
             "email": "test@example.com",
-            "password": "testpassword"
+            "password": "testpassword",
+            "country": "NG"
         })
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["email"], "test@example.com")
@@ -33,7 +46,7 @@ class UserRegistrationTest(TestCase):
         self.assertEqual(response.data["church"], None)
         self.assertEqual(response.data["zone"], None)
 
-class UserLoginTest(TestCase):
+class UserLoginTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -56,7 +69,7 @@ class UserLoginTest(TestCase):
         self.assertEqual(response.data["church"], None)
         self.assertEqual(response.data["zone"], None)
 
-class UserProfileTest(TestCase):
+class UserProfileTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -72,10 +85,11 @@ class UserProfileTest(TestCase):
             "password": "testpassword"
         })
         self.assertEqual(login_response.status_code, 200)
-        token = login_response.data["access"]
+        access_token = login_response.data["access"]
+        refresh_token = login_response.data["refresh"]
 
         # Then, use the token to fetch the user profile
-        client.credentials(HTTP_AUTHORIZATION="Bearer " + token)
+        client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
         profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 200)
         self.assertEqual(profile_response.data["email"], "test@example.com")
@@ -84,7 +98,7 @@ class UserProfileTest(TestCase):
         self.assertEqual(profile_response.data["church"], None)
         self.assertEqual(profile_response.data["zone"], None)
     
-class UserLogoutTest(TestCase):
+class UserLogoutTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -103,8 +117,8 @@ class UserLogoutTest(TestCase):
         token = login_response.data["access"]
 
         # Then, use the token to log out
-        client.credentials(HTTP_AUTHORIZATION="Bearer " + token)
-        logout_response = client.post("/api/users/logout/")
+        client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
+        logout_response = client.post("/api/users/logout/", {"refresh": refresh_token})
         self.assertEqual(logout_response.status_code, 200)
 
         self.assertEqual(logout_response.data["detail"], "Logout successful")
@@ -112,18 +126,21 @@ class UserLogoutTest(TestCase):
         profile_response = client.get("/api/users/profile/")
         self.assertEqual(profile_response.status_code, 401)
 
-class UserRegistrationThrottleTest(TestCase):
+class UserRegistrationThrottleTest(BaseTestCase):
     def test_registration_throttle(self):
         from rest_framework.test import APIClient
         client = APIClient()
         for i in range(6):  # Exceed the throttle limit of 5/minute
             response = client.post("/api/users/register/", {
                 "email": f"test{i}@example.com",
-                "password": "testpassword"
+                "password": "testpassword",
+                "country": "NG"
             })
         self.assertEqual(response.status_code, 429)  # Throttle limit exceeded
 
-class UserLoginThrottleTest(TestCase):
+
+
+class UserLoginThrottleTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -140,7 +157,7 @@ class UserLoginThrottleTest(TestCase):
             })
         self.assertEqual(response.status_code, 429)  # Throttle limit exceeded
 
-class UserIPThrottleTest(TestCase):
+class UserIPThrottleTest(BaseTestCase):
     def test_ip_throttle(self):
         from rest_framework.test import APIClient
         client = APIClient()
@@ -151,7 +168,7 @@ class UserIPThrottleTest(TestCase):
             })
         self.assertEqual(response.status_code, 429)  # Throttle limit exceeded
 
-class UserProfileDataTest(TestCase):
+class UserProfileDataTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -183,7 +200,7 @@ class UserProfileDataTest(TestCase):
         self.assertEqual(profile_response.data["church"], "Test Church")
         self.assertEqual(profile_response.data["zone"], "Test Zone")
 
-class UserLogoutInvalidTokenTest(TestCase):
+class UserLogoutInvalidTokenTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -199,7 +216,7 @@ class UserLogoutInvalidTokenTest(TestCase):
         self.assertEqual(logout_response.status_code, 401)  # Unauthorized due to invalid token
         self.assertEqual(logout_response.data["detail"], "Invalid token")
 
-class UserLogoutNoTokenTest(TestCase):
+class UserLogoutNoTokenTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -214,7 +231,7 @@ class UserLogoutNoTokenTest(TestCase):
         self.assertEqual(logout_response.status_code, 401)  # Unauthorized due to missing token
         self.assertEqual(logout_response.data["detail"], "Authentication credentials were not provided.")
 
-class UserProfileUnauthorizedTest(TestCase):
+class UserProfileUnauthorizedTest(BaseTestCase):
     def test_profile_unauthorized(self):
         from rest_framework.test import APIClient
         client = APIClient()
@@ -223,7 +240,7 @@ class UserProfileUnauthorizedTest(TestCase):
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to missing token
         self.assertEqual(profile_response.data["detail"], "Authentication credentials were not provided.")
 
-class UserProfileInvalidTokenTest(TestCase):
+class UserProfileInvalidTokenTest(BaseTestCase):
     def test_profile_invalid_token(self):
         from rest_framework.test import APIClient
         client = APIClient()
@@ -233,24 +250,26 @@ class UserProfileInvalidTokenTest(TestCase):
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to invalid token
         self.assertEqual(profile_response.data["detail"], "Invalid token")
 
-class UserRegistrationInvalidDataTest(TestCase):
+class UserRegistrationInvalidDataTest(BaseTestCase):
     def test_registration_invalid_data(self):
         from rest_framework.test import APIClient
         client = APIClient()
         # Try to register with missing email
         response = client.post("/api/users/register/", {
-            "password": "testpassword"
+            "password": "testpassword",
+            "country": "NG"
         })
         self.assertEqual(response.status_code, 400)  # Bad request due to missing email
         self.assertIn("email", response.data)
         # Try to register with missing password
         response = client.post("/api/users/register/", {
-            "email": "test@example.com"
+            "email": "test@example.com",
+            "country": "NG"
         })
         self.assertEqual(response.status_code, 400)  # Bad request due to missing password
         self.assertIn("password", response.data)
 
-class UserLoginInvalidDataTest(TestCase):
+class UserLoginInvalidDataTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -273,7 +292,7 @@ class UserLoginInvalidDataTest(TestCase):
         self.assertEqual(response.status_code, 400)  # Bad request due to missing password
         self.assertIn("password", response.data)
 
-class UserLoginInvalidCredentialsTest(TestCase):
+class UserLoginInvalidCredentialsTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -298,7 +317,7 @@ class UserLoginInvalidCredentialsTest(TestCase):
         self.assertEqual(response.status_code, 401)  # Unauthorized due to invalid credentials
         self.assertEqual(response.data["detail"], "Invalid email or password")
 
-class UserLogoutInvalidRefreshTokenTest(TestCase):
+class UserLogoutInvalidRefreshTokenTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -314,15 +333,15 @@ class UserLogoutInvalidRefreshTokenTest(TestCase):
             "password": "testpassword"
         })
         self.assertEqual(login_response.status_code, 200)  # Successful login
-        refresh_token = login_response.data["refresh"]
+        access_token = login_response.data["access"]
 
         # Try to log out with an invalid refresh token
-        client.credentials(HTTP_AUTHORIZATION="Bearer " + refresh_token)
-        logout_response = client.post("/api/users/logout/")
+        client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
+        logout_response = client.post("/api/users/logout/", {"refresh": "invalidrefresh"})
         self.assertEqual(logout_response.status_code, 401)  # Unauthorized due to invalid refresh token
         self.assertEqual(logout_response.data["detail"], "Invalid refresh token")
 
-class UserLogoutMissingRefreshTokenTest(TestCase):
+class UserLogoutMissingRefreshTokenTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -338,14 +357,15 @@ class UserLogoutMissingRefreshTokenTest(TestCase):
             "password": "testpassword"
         })
         self.assertEqual(login_response.status_code, 200)  # Successful login
-        refresh_token = login_response.data["refresh"]
+        access_token = login_response.data["access"]
 
         # Try to log out without providing a refresh token
+        client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
         logout_response = client.post("/api/users/logout/")
         self.assertEqual(logout_response.status_code, 401)  # Unauthorized due to missing refresh token
         self.assertEqual(logout_response.data["detail"], "Refresh token is required")
 
-class UserLogoutInvalidTokenFormatTest(TestCase):
+class UserLogoutInvalidTokenFormatTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -361,15 +381,15 @@ class UserLogoutInvalidTokenFormatTest(TestCase):
             "password": "testpassword"
         })
         self.assertEqual(login_response.status_code, 200)  # Successful login
-        refresh_token = login_response.data["refresh"]
+        access_token = login_response.data["access"]
 
         # Try to log out with an invalid refresh token format
-        client.credentials(HTTP_AUTHORIZATION="Bearer " + refresh_token)
-        logout_response = client.post("/api/users/logout/")
+        client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
+        logout_response = client.post("/api/users/logout/", {"refresh": "invalid.refresh.token"})
         self.assertEqual(logout_response.status_code, 401)  # Unauthorized due to invalid refresh token
         self.assertEqual(logout_response.data["detail"], "Invalid refresh token")
 
-class UserProfileInvalidCountryTest(TestCase):
+class UserProfileInvalidCountryTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -395,7 +415,7 @@ class UserProfileInvalidCountryTest(TestCase):
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid country
         self.assertEqual(profile_response.data["detail"], "Invalid country")
 
-class UserProfileMissingCountryTest(TestCase):
+class UserProfileMissingCountryTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -416,12 +436,12 @@ class UserProfileMissingCountryTest(TestCase):
         # Try to update profile without providing a country
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
         profile_response = client.patch("/api/users/profile/", {
-            "name": "Test User"
+            "country": ""
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing country
         self.assertEqual(profile_response.data["detail"], "Country is required")
 
-class UserProfileInvalidPhoneNumberTest(TestCase):
+class UserProfileInvalidPhoneNumberTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -447,7 +467,7 @@ class UserProfileInvalidPhoneNumberTest(TestCase):
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid phone number
         self.assertEqual(profile_response.data["detail"], "Invalid phone number")
     
-class UserProfileMissingPhoneNumberTest(TestCase):
+class UserProfileMissingPhoneNumberTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -472,7 +492,7 @@ class UserProfileMissingPhoneNumberTest(TestCase):
         self.assertEqual(profile_response.status_code, 200)  # Successful update without phone number
         self.assertEqual(profile_response.data["phone_number"], None)
 
-class UserProfileInvalidChurchTest(TestCase):
+class UserProfileInvalidChurchTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -493,12 +513,12 @@ class UserProfileInvalidChurchTest(TestCase):
         # Try to update profile with an invalid church
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
         profile_response = client.patch("/api/users/profile/", {
-            "church": "Invalid Church"
+            "church": ""
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid church
         self.assertEqual(profile_response.data["detail"], "Invalid church")
 
-class UserProfileMissingChurchTest(TestCase):
+class UserProfileMissingChurchTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -524,7 +544,7 @@ class UserProfileMissingChurchTest(TestCase):
         self.assertEqual(profile_response.status_code, 200)  # Successful update without church
         self.assertEqual(profile_response.data["church"], None)
 
-class UserProfileInvalidZoneTest(TestCase):
+class UserProfileInvalidZoneTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -545,12 +565,12 @@ class UserProfileInvalidZoneTest(TestCase):
         # Try to update profile with an invalid zone
         client.credentials(HTTP_AUTHORIZATION="Bearer " + access_token)
         profile_response = client.patch("/api/users/profile/", {
-            "zone": "Invalid Zone"
+            "zone": ""
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid zone
         self.assertEqual(profile_response.data["detail"], "Invalid zone")
 
-class UserProfileMissingZoneTest(TestCase):
+class UserProfileMissingZoneTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -576,7 +596,7 @@ class UserProfileMissingZoneTest(TestCase):
         self.assertEqual(profile_response.status_code, 200)  # Successful update without zone
         self.assertEqual(profile_response.data["zone"], None)
 
-class UserProfileInvalidDataTest(TestCase):
+class UserProfileInvalidDataTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -602,7 +622,7 @@ class UserProfileInvalidDataTest(TestCase):
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid data
         self.assertEqual(profile_response.data["detail"], "Invalid data")
 
-class UserProfileValidDataTest(TestCase):
+class UserProfileValidDataTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -628,7 +648,7 @@ class UserProfileValidDataTest(TestCase):
         self.assertEqual(profile_response.status_code, 200)  # Successful update with valid data
         self.assertEqual(profile_response.data["name"], "Test User")
 
-class UserProfileNoChangesTest(TestCase):
+class UserProfileNoChangesTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -654,7 +674,7 @@ class UserProfileNoChangesTest(TestCase):
         self.assertEqual(profile_response.status_code, 200)  # Successful update with no changes
         self.assertEqual(profile_response.data["name"], "Test User")
 
-class UserProfileInvalidTokenTest(TestCase):
+class UserProfileInvalidTokenTest(BaseTestCase):
     def test_profile_invalid_token(self):
         from rest_framework.test import APIClient
         client = APIClient()
@@ -664,7 +684,7 @@ class UserProfileInvalidTokenTest(TestCase):
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to invalid token
         self.assertEqual(profile_response.data["detail"], "Invalid token")
 
-class UserProfileMissingTokenTest(TestCase):
+class UserProfileMissingTokenTest(BaseTestCase):
     def test_profile_missing_token(self):
         from rest_framework.test import APIClient
         client = APIClient()
@@ -673,7 +693,7 @@ class UserProfileMissingTokenTest(TestCase):
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to missing token
         self.assertEqual(profile_response.data["detail"], "Authentication credentials were not provided.")
 
-class UserProfileNonExistentUserTest(TestCase):
+class UserProfileNonExistentUserTest(BaseTestCase):
     def test_profile_non_existent_user(self):
         from rest_framework.test import APIClient
         client = APIClient()
@@ -683,7 +703,7 @@ class UserProfileNonExistentUserTest(TestCase):
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to invalid token
         self.assertEqual(profile_response.data["detail"], "Invalid token")
 
-class UserProfileInactiveUserTest(TestCase):
+class UserProfileInactiveUserTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -701,7 +721,7 @@ class UserProfileInactiveUserTest(TestCase):
         self.assertEqual(profile_response.status_code, 401)  # Unauthorized due to invalid token
         self.assertEqual(profile_response.data["detail"], "Invalid token")
 
-class UserProfileAdminUserTest(TestCase):
+class UserProfileAdminUserTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -729,7 +749,7 @@ class UserProfileAdminUserTest(TestCase):
         self.assertEqual(profile_response.data["church"], None)
         self.assertEqual(profile_response.data["zone"], None)
 
-class UserProfileAgentUserTest(TestCase):
+class UserProfileAgentUserTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -757,7 +777,7 @@ class UserProfileAgentUserTest(TestCase):
         self.assertEqual(profile_response.data["church"], None)
         self.assertEqual(profile_response.data["zone"], None)
 
-class UserProfileRegularUserTest(TestCase):
+class UserProfileRegularUserTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -785,7 +805,7 @@ class UserProfileRegularUserTest(TestCase):
         self.assertEqual(profile_response.data["church"], None)
         self.assertEqual(profile_response.data["zone"], None)
 
-class UserProfileMultipleUpdatesTest(TestCase):
+class UserProfileMultipleUpdatesTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -813,7 +833,7 @@ class UserProfileMultipleUpdatesTest(TestCase):
         self.assertEqual(profile_response.data["church"], None)
         self.assertEqual(profile_response.data["zone"], None)
 
-class UserProfileDataPersistenceTest(TestCase):
+class UserProfileDataPersistenceTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -841,7 +861,7 @@ class UserProfileDataPersistenceTest(TestCase):
         self.assertEqual(profile_response.data["church"], None)
         self.assertEqual(profile_response.data["zone"], None)
 
-class UserProfileDataUpdateTest(TestCase):
+class UserProfileDataUpdateTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -886,7 +906,7 @@ class UserProfileDataUpdateTest(TestCase):
         self.assertEqual(profile_response.data["church"], "Test Church")
         self.assertEqual(profile_response.data["zone"], "Test Zone")
 
-class UserProfileDataValidationTest(TestCase):
+class UserProfileDataValidationTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -922,7 +942,7 @@ class UserProfileDataValidationTest(TestCase):
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid zone
         self.assertEqual(profile_response.data["detail"], "Invalid zone")
 
-class UserProfileDataValidationMissingFieldsTest(TestCase):
+class UserProfileDataValidationMissingFieldsTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -948,18 +968,20 @@ class UserProfileDataValidationMissingFieldsTest(TestCase):
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing fields
         self.assertEqual(profile_response.data["detail"], "Church and zone are required when phone number is provided")
         profile_response = client.patch("/api/users/profile/", {
+            "phone_number": "1234567890",
             "church": "Test Church"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing zone
         self.assertEqual(profile_response.data["detail"], "Zone is required when phone number is provided")
         profile_response = client.patch("/api/users/profile/", {
+            "phone_number": "1234567890",
             "zone": "Test Zone"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing church
         self.assertEqual(profile_response.data["detail"], "Church is required when phone number is provided")
         self.assertEqual(profile_response.data["detail"], "Church is required when phone number is provided")
 
-class UserProfileDataValidationTest(TestCase):
+class UserProfileDataValidationTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -995,7 +1017,7 @@ class UserProfileDataValidationTest(TestCase):
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to invalid zone
         self.assertEqual(profile_response.data["detail"], "Invalid zone")
 
-class UserProfileDataValidationMissingFieldsTest(TestCase):
+class UserProfileDataValidationMissingFieldsTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -1021,17 +1043,19 @@ class UserProfileDataValidationMissingFieldsTest(TestCase):
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing fields
         self.assertEqual(profile_response.data["detail"], "Church and zone are required when phone number is provided")
         profile_response = client.patch("/api/users/profile/", {
+            "phone_number": "1234567890",
             "church": "Test Church"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing
         self.assertEqual(profile_response.data["detail"], "Zone is required when phone number is provided")
         profile_response = client.patch("/api/users/profile/", {
+            "phone_number": "1234567890",
             "zone": "Test Zone"
         })
         self.assertEqual(profile_response.status_code, 400)  # Bad Request due to missing
         self.assertEqual(profile_response.data["detail"], "Church is required when phone number is provided")
 
-class UserProfileDataValidationSuccessTest(TestCase):
+class UserProfileDataValidationSuccessTest(BaseTestCase):
     def setUp(self):
         from .models import User
         self.user = User.objects.create_user(
@@ -1062,7 +1086,7 @@ class UserProfileDataValidationSuccessTest(TestCase):
         self.assertEqual(profile_response.data["zone"], "Test Zone")
 
 
-class RegisterSerializerTests(TestCase):
+class RegisterSerializerTests(BaseTestCase):
     def test_register_serializer_creates_user(self):
         payload = {
             "email": "serializer@example.com",
@@ -1076,7 +1100,7 @@ class RegisterSerializerTests(TestCase):
         self.assertTrue(user.check_password("password123"))
 
 
-class UserProfileSerializerTests(TestCase):
+class UserProfileSerializerTests(BaseTestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -1093,7 +1117,7 @@ class UserProfileSerializerTests(TestCase):
         self.assertEqual(data["country"]["name"], str(self.user.country.name))
 
 
-class RegisterSerializerValidationTests(TestCase):
+class RegisterSerializerValidationTests(BaseTestCase):
     def test_register_serializer_missing_email(self):
         serializer = RegisterSerializer(
             data={

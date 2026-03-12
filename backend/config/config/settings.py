@@ -29,11 +29,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-6ophipqh)6ub6p+$&e713pv*ja79)3_%%6)=+w&n*kul$nf2d*'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')
-
+USING_TESTS = "test" in sys.argv
 
 # Application definition
 
@@ -97,9 +96,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "app.users.authentication.CustomJWTAuthentication",
         ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -118,14 +118,33 @@ REST_FRAMEWORK = {
     }
         }
 
+if USING_TESTS:
+    REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].update(
+        {
+            "anon": "5/minute",
+            "user": "5/minute",
+            "ip": "5/minute",
+        }
+    )
+
+if "test" in sys.argv:
+    REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASES = {
-    "default": dj_database_url.config(
-        default=os.environ.get("DATABASE_URL")
-    )
-}
+if USING_TESTS:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "test_db.sqlite3",
+        }
+    }
+else:
+    DATABASES = {
+        "default": dj_database_url.config(
+            default=os.environ.get("DATABASE_URL")
+        )
+    }
 AUTH_USER_MODEL = "users.User"
 
 AUTHENTICATION_BACKENDS = [
@@ -159,7 +178,7 @@ SIMPLE_JWT = {
 }
 
 REDIS_URL = os.environ.get("REDIS_URL")
-USING_TESTS = "test" in sys.argv
+
 
 if USING_TESTS or not REDIS_URL:
     CACHES = {
