@@ -4,10 +4,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
+from rest_framework.decorators import action
 
 from app.services.booking_engine import BookingEngine
-from .models import TransportService
-from .serializers import TransportServiceSerializer
+from .models import TransportService, TransportReservation
+from .serializers import TransportServiceSerializer, TransportReservationSerializer
 from .permissions import IsAdminUserType
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -111,33 +112,6 @@ class TransportViewSet(viewsets.ReadOnlyModelViewSet):
                                                       "special_requests": openapi.Schema(type=openapi.TYPE_STRING),
                                                   }
                                               )
-                                          )
-                                      ),
-                                    }
-    )
-)
-@method_decorator(
-    name="retrieve",
-    decorator=swagger_auto_schema(operation_description="Retrieve a transport service by ID (admin).",
-                                  responses={
-                                      200: openapi.Response(
-                                          description="Transport service retrieved successfully",
-                                          schema=openapi.Schema(
-                                              type=openapi.TYPE_OBJECT,
-                                              properties={
-                                                  "id": openapi.Schema(type=openapi.TYPE_INTEGER),
-                                                  "booking": openapi.Schema(type=openapi.TYPE_OBJECT, nullable=True),
-                                                  "transport_type": openapi.Schema(type=openapi.TYPE_STRING),
-                                                  "pickup_location": openapi.Schema(type=openapi.TYPE_STRING),
-                                                  "dropoff_location": openapi.Schema(type=openapi.TYPE_STRING),
-                                                  "pickup_time": openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_DATETIME),
-                                                  "dropoff_time": openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_DATETIME),
-                                                  "company": openapi.Schema(type=openapi.TYPE_STRING),
-                                                  "price_per_passenger": openapi.Schema(type=openapi.TYPE_NUMBER, format='decimal'),
-                                                  "currency": openapi.Schema(type=openapi.TYPE_STRING),
-                                                  "passengers": openapi.Schema(type=openapi.TYPE_INTEGER),
-                                                  "special_requests": openapi.Schema(type=openapi.TYPE_STRING),
-                                              }
                                           )
                                       ),
                                     }
@@ -365,6 +339,23 @@ class TransportBookingViewSet(viewsets.ModelViewSet):
             return TransportService.objects.all()
         return TransportService.objects.filter(booking__user=user)
 
+    @swagger_auto_schema(
+        operation_description="Create a transport booking.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["transport_id"],
+            properties={
+                "transport_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                "passengers": openapi.Schema(type=openapi.TYPE_INTEGER),
+                "special_requests": openapi.Schema(type=openapi.TYPE_STRING),
+            },
+        ),
+        responses={
+            201: TransportServiceSerializer,
+            400: "Invalid request",
+            404: "Transport not found"
+        }
+    )
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Creates a new transport booking. This method handles the booking process for a transport service. It checks if the transport service is available, calculates the total price based on the number of passengers, creates a booking using the BookingEngine, and associates the booking with the transport service. The method also handles special requests and ensures that the booking process is atomic to prevent race conditions.
@@ -494,3 +485,92 @@ class TransportSearchView(APIView):
 
         serializer = TransportServiceSerializer(transports, many=True)
         return Response(serializer.data)
+
+@method_decorator(
+    name="list",
+    decorator=swagger_auto_schema(
+        operation_description="List all transport reservations (admin).",
+        responses={200: TransportReservationSerializer(many=True)}
+    ),
+)
+class TransportReservationViewSet(viewsets.ModelViewSet):
+    """Viewset for managing transport reservations by regular users."""
+    serializer_class = TransportReservationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Regular users can only see their own reservations."""
+        user = self.request.user
+        if getattr(user, "user_type", None) == "admin":
+            return TransportReservation.objects.all()
+        return TransportReservation.objects.filter(reserved_by=user)
+
+    @swagger_auto_schema(
+        operation_description="Create a reservation for a transport service.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["transport_id"],
+            properties={
+                "transport_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                "passengers": openapi.Schema(type=openapi.TYPE_INTEGER),
+                "special_requests": openapi.Schema(type=openapi.TYPE_STRING),
+            },
+        ),
+        responses={
+            201: TransportReservationSerializer,
+            404: "Transport service not found",
+            400: "Transport already booked"
+        }
+
+    )
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Create a transport reservation for a service."""
+        data = request.data
+        transport_id = data.get("transport_id")
+        passengers = int(data.get("passengers", 1))
+        special_requests = data.get("special_requests", "")
+
+        try:
+            transport = TransportService.objects.select_for_update().get(id=transport_id)
+        except TransportService.DoesNotExist:
+            return Response({"error": "Transport service not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if transport.booking is not None:
+            return Response({"error": "Transport already booked"}, status=status.HTTP_400_BAD_REQUEST)
+
+        reservation = TransportReservation.objects.create(
+            service=transport,
+            reserved_by=request.user,
+            passengers_count=passengers,
+            special_requests=special_requests
+        )
+
+        serializer = self.get_serializer(reservation)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @swagger_auto_schema(
+        operation_description="Cancel a transport reservation.",
+        responses={
+            200: TransportReservationSerializer,
+            404: "Reservation not found"
+        }
+    )
+    @action(detail=True, methods=["post"], url_path="cancel", url_name="cancel")
+    def cancel_reservation(self, request, pk=None):
+        """Cancel a reservation. Only the user who reserved it or admin can cancel."""
+        try:
+            reservation = self.get_queryset().get(pk=pk)
+        except TransportReservation.DoesNotExist:
+            return Response({"error": "Reservation not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        reservation.status = "cancelled"
+        reservation.save()
+        serializer = self.get_serializer(reservation)
+        return Response(serializer.data)
+    
+class AdminTransportReservationViewSet(viewsets.ModelViewSet):
+    """Admin viewset to manage all transport reservations."""
+    queryset = TransportReservation.objects.all()
+    serializer_class = TransportReservationSerializer
+    permission_classes = [IsAuthenticated, IsAdminUserType]

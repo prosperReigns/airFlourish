@@ -1,6 +1,6 @@
 from django.db import models
 from app.bookings.models import Booking
-
+from django.conf import settings
 class TransportService(models.Model):
     VEHICLE_TYPES = (
         ("sedan", "Sedan"),
@@ -34,3 +34,42 @@ class TransportService(models.Model):
 
     def __str__(self):
         return f"{self.transport_name} ({self.vehicle_type})"
+
+class TransportReservation(models.Model):
+    """
+    Represents a user's reservation of a transport service.
+    Each reservation is linked to a TransportService and optionally a Booking.
+
+    """
+    service = models.ForeignKey(
+        TransportService,
+        on_delete=models.CASCADE,
+        related_name="reservations"
+    )
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.CASCADE,
+        related_name="transport_reservations",
+        blank=True,
+        null=True
+    )
+    reserved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="transport_reservations"
+    )
+    passengers_count = models.PositiveIntegerField(default=1)
+    special_requests = models.TextField(blank=True, null=True)
+    reserved_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(
+        max_length=20,
+        choices=(
+            ("pending", "Pending"),
+            ("confirmed", "Confirmed"),
+            ("cancelled", "Cancelled")
+        ),
+        default="pending"
+    )
+
+    def __str__(self):
+        return f"Reservation {self.id} - {self.service.transport_name} ({self.status})"

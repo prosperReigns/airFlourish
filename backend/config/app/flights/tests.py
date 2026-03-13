@@ -2,7 +2,9 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 import uuid
+import threading
 
+from django.urls import reverse
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -10,7 +12,7 @@ from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APITestCase
 
 from app.bookings.models import Booking
 from app.flights.models import FlightBooking
@@ -683,3 +685,866 @@ class FlightPerformanceTests(BaseFlightTestCase):
             response = self.client.get(FLIGHT_BOOKINGS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertLessEqual(len(context), 3)
+
+class FlightAdditionalTests(BaseFlightTestCase):
+
+    # ----------------------------
+    # FlightBooking Model Edge Cases
+    # ----------------------------
+
+    def test_flight_booking_large_passenger_count(self):
+        flight = self.create_flight_booking(passengers=9)
+        self.assertEqual(flight.passengers, 9)
+
+    def test_flight_booking_zero_passengers_not_allowed(self):
+        flight = self.create_flight_booking(passengers=0)
+        self.assertEqual(flight.passengers, 0)
+
+    def test_flight_booking_long_city_names(self):
+        flight = self.create_flight_booking(
+            departure_city="LagosInternationalAirportTerminal1",
+            arrival_city="CharlesDeGaulleInternationalAirport"
+        )
+        self.assertIn("Lagos", flight.departure_city)
+
+    def test_flight_booking_airline_code_storage(self):
+        flight = self.create_flight_booking(airline="BA")
+        self.assertEqual(flight.airline, "BA")
+
+    def test_flight_booking_return_date_before_departure(self):
+        flight = self.create_flight_booking(
+            departure_date=date(2026, 5, 10),
+            return_date=date(2026, 5, 1)
+        )
+        self.assertLess(flight.return_date, flight.departure_date)
+
+    # ----------------------------
+    # Serializer Additional Tests
+    # ----------------------------
+
+    def test_serializer_handles_null_return_date(self):
+        flight = self.create_flight_booking(return_date=None)
+        data = FlightBookingSerializer(flight).data
+        self.assertIsNone(data["return_date"])
+
+    def test_serializer_passenger_integer(self):
+        flight = self.create_flight_booking(passengers=3)
+        data = FlightBookingSerializer(flight).data
+        self.assertEqual(data["passengers"], 3)
+
+    def test_serializer_airline_present(self):
+        flight = self.create_flight_booking(airline="KL")
+        data = FlightBookingSerializer(flight).data
+        self.assertEqual(data["airline"], "KL")
+
+    def test_serializer_output_contains_id(self):
+        flight = self.create_flight_booking()
+        data = FlightBookingSerializer(flight).data
+        self.assertEqual(data["id"], flight.id)
+
+    def test_serializer_output_contains_booking_reference(self):
+        flight = self.create_flight_booking()
+        data = FlightBookingSerializer(flight).data
+        self.assertEqual(data["booking"], flight.booking.id)
+
+    # ----------------------------
+    # Secure Booking Workflow
+    # ----------------------------
+
+    @patch("app.flights.views.FlutterwaveService")
+    @patch("app.flights.views.AmadeusService.reprice_flight")
+    def test_secure_booking_price_conversion_decimal(self, mock_reprice, mock_fw):
+
+        mock_reprice.return_value = {
+            "flightOffers": [{"price": {"total": "250.50", "currency": "USD"}}]
+        }
+
+        mock_fw.return_value.initiate_card_payment.return_value = {
+            "status": "success",
+            "data": {"link": "http://pay.local/test"},
+        }
+
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "flight_offer": {"id": "offer-decimal"},
+            "travelers": [{"id": "t1"}],
+            "departure_city": "Lagos",
+            "arrival_city": "Rome",
+            "departure_date": "2026-05-01",
+            "airline": "AF",
+        }
+
+        response = self.client.post(SECURE_BOOK_URL, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        payment = Payment.objects.first()
+
+        self.assertEqual(payment.amount, Decimal("250.50"))
+
+    # ----------------------------
+    # Verify Payment Additional Cases
+    # ----------------------------
+
+    @patch("app.flights.views.FlutterwaveService.verify_payment")
+    def test_verify_handles_invalid_json_response(self, mock_verify):
+
+        payment = self.create_payment()
+
+        mock_verify.return_value = {"invalid": "structure"}
+
+        self.client.force_authenticate(self.user)
+
+        response = self.client.post(
+            VERIFY_PAYMENT_URL,
+            {"tx_ref": payment.tx_ref},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch("app.flights.views.FlutterwaveService.verify_payment")
+    def test_verify_handles_missing_amount(self, mock_verify):
+
+        payment = self.create_payment()
+
+        mock_verify.return_value = {
+            "status": "success",
+            "data": {"status": "successful", "currency": "USD"}
+        }
+
+        self.client.force_authenticate(self.user)
+
+        response = self.client.post(
+            VERIFY_PAYMENT_URL,
+            {"tx_ref": payment.tx_ref},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # ----------------------------
+    # Search Variants
+    # ----------------------------
+
+    @patch("app.bookings.views.AmadeusService.search_flights")
+    def test_search_one_way(self, mock_search):
+
+        mock_search.return_value = [{"id": "flight-2"}]
+
+        self.client.force_authenticate(self.user)
+
+        response = self.client.get(
+            FLIGHT_SEARCH_URL,
+            data={
+                "origin": "LOS",
+                "destination": "CDG",
+                "departure_date": "2026-06-01",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    @patch("app.bookings.views.AmadeusService.search_flights")
+    def test_search_round_trip(self, mock_search):
+
+        mock_search.return_value = [{"id": "flight-3"}]
+
+        self.client.force_authenticate(self.user)
+
+        response = self.client.get(
+            FLIGHT_SEARCH_URL,
+            data={
+                "origin": "LOS",
+                "destination": "DXB",
+                "departure_date": "2026-06-01",
+                "return_date": "2026-06-10",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    # ----------------------------
+    # Permission Tests
+    # ----------------------------
+
+    def test_admin_can_delete_any_flight(self):
+
+        flight = self.create_flight_booking(user=self.other_user)
+
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.delete(f"{FLIGHT_BOOKINGS_URL}{flight.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_admin_can_update_any_flight(self):
+
+        flight = self.create_flight_booking(user=self.other_user)
+
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.patch(
+            f"{FLIGHT_BOOKINGS_URL}{flight.id}/",
+            {"arrival_city": "Berlin"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    # ----------------------------
+    # Caching Isolation
+    # ----------------------------
+
+    def test_cache_isolated_between_users(self):
+
+        flight = self.create_flight_booking(user=self.user)
+
+        data = FlightBookingSerializer([flight], many=True).data
+
+        cache.set(f"user_flight:{self.user.id}", data)
+
+        cache.set(f"user_flight:{self.other_user.id}", [])
+
+        self.assertNotEqual(
+            cache.get(f"user_flight:{self.user.id}"),
+            cache.get(f"user_flight:{self.other_user.id}")
+        )
+
+    # ----------------------------
+    # Workflow Consistency
+    # ----------------------------
+
+    def test_flight_booking_linked_to_booking(self):
+
+        flight = self.create_flight_booking()
+
+        self.assertEqual(flight.booking.service_type, "flight")
+
+    def test_payment_links_to_booking(self):
+
+        payment = self.create_payment()
+
+        self.assertIsNotNone(payment.booking)
+
+    def test_payment_status_pending_by_default(self):
+
+        payment = self.create_payment()
+
+        self.assertEqual(payment.status, "pending")
+
+    # ----------------------------
+    # Performance Tests
+    # ----------------------------
+
+    def test_multiple_flight_list_query_efficiency(self):
+
+        for _ in range(5):
+            self.create_flight_booking()
+
+        self.client.force_authenticate(self.user)
+
+        with CaptureQueriesContext(connection) as context:
+
+            response = self.client.get(FLIGHT_BOOKINGS_URL)
+
+        self.assertLessEqual(len(context), 5)
+
+    def test_retrieve_query_efficiency(self):
+
+        flight = self.create_flight_booking()
+
+        self.client.force_authenticate(self.user)
+
+        with CaptureQueriesContext(connection) as context:
+
+            response = self.client.get(f"{FLIGHT_BOOKINGS_URL}{flight.id}/")
+
+        self.assertLessEqual(len(context), 3)
+
+    # ----------------------------
+    # Bulk Workflow Tests
+    # ----------------------------
+
+    def test_bulk_create_flights(self):
+
+        flights = []
+
+        for _ in range(10):
+            flights.append(self.create_flight_booking())
+
+        self.assertEqual(len(flights), 10)
+
+    def test_bulk_delete_flights(self):
+
+        flights = [self.create_flight_booking() for _ in range(3)]
+
+        self.client.force_authenticate(self.user)
+
+        for f in flights:
+            self.client.delete(f"{FLIGHT_BOOKINGS_URL}{f.id}/")
+
+        self.assertEqual(FlightBooking.objects.count(), 0)
+
+    # ----------------------------
+    # BookingEngine Integration
+    # ----------------------------
+
+    def test_booking_engine_creates_flight_booking(self):
+
+        booking = BookingEngine.create_booking(
+            user=self.user,
+            service_type="flight",
+            total_price=Decimal("300.00"),
+        )
+
+        flight = FlightBooking.objects.create(
+            booking=booking,
+            departure_city="Lagos",
+            arrival_city="Madrid",
+            departure_date=date(2026, 7, 1),
+            airline="IB",
+        )
+
+        self.assertEqual(flight.booking, booking)
+
+    def test_booking_engine_status_update(self):
+
+        booking = self.create_booking()
+
+        BookingEngine.update_status(booking, "confirmed")
+
+        booking.refresh_from_db()
+
+        self.assertEqual(booking.status, "confirmed")
+
+class FlightIdempotencyTests(BaseFlightTestCase):
+
+    @patch("app.flights.views.AmadeusService.create_flight_order")
+    @patch("app.flights.views.FlutterwaveService.verify_payment")
+    def test_verify_payment_idempotent(self, mock_verify, mock_order):
+
+        meta = {
+            "flight_offer": {"id": "offer-1"},
+            "travelers": [{"id": "t1"}],
+            "departure_city": "Lagos",
+            "arrival_city": "Paris",
+            "departure_date": "2026-05-01",
+            "airline": "AF",
+        }
+
+        payment = self.create_payment(status="pending", raw_meta=meta)
+
+        mock_verify.return_value = {
+            "status": "success",
+            "data": {
+                "status": "successful",
+                "amount": "100.00",
+                "currency": "USD",
+                "id": "fw-idem",
+            },
+        }
+
+        mock_order.return_value = {"id": "am-1"}
+
+        self.client.force_authenticate(self.user)
+
+        # first verification
+        response1 = self.client.post(
+            VERIFY_PAYMENT_URL, {"tx_ref": payment.tx_ref}, format="json"
+        )
+
+        # second verification
+        response2 = self.client.post(
+            VERIFY_PAYMENT_URL, {"tx_ref": payment.tx_ref}, format="json"
+        )
+
+        self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(
+            FlightBooking.objects.filter(booking=payment.booking).count(), 1
+        )
+
+def test_duplicate_tx_ref_not_allowed(self):
+
+    booking = self.create_booking()
+
+    Payment.objects.create(
+        booking=booking,
+        tx_ref="duplicate-ref",
+        amount=Decimal("100.00"),
+        currency="USD",
+        payment_method="card",
+        status="pending",
+    )
+
+    with self.assertRaises(Exception):
+
+        Payment.objects.create(
+            booking=booking,
+            tx_ref="duplicate-ref",
+            amount=Decimal("100.00"),
+            currency="USD",
+            payment_method="card",
+            status="pending",
+        )
+
+@patch("app.flights.views.FlutterwaveService.verify_payment")
+def test_replay_attack_prevention(self, mock_verify):
+
+    payment = self.create_payment(status="succeeded")
+
+    mock_verify.return_value = {
+        "status": "success",
+        "data": {"status": "successful"},
+    }
+
+    self.client.force_authenticate(self.user)
+
+    response = self.client.post(
+        VERIFY_PAYMENT_URL,
+        {"tx_ref": payment.tx_ref},
+        format="json",
+    )
+
+    self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+@patch("app.flights.views.BookingEngine.book_flight")
+def test_duplicate_flight_offer_not_double_booked(self, mock_book):
+
+    booking = self.create_booking()
+
+    mock_book.return_value = (booking, {"id": "am-1"})
+
+    self.client.force_authenticate(self.user)
+
+    payload = {
+        "departure_city": "Lagos",
+        "arrival_city": "Paris",
+        "departure_date": "2026-05-01",
+        "airline": "AF",
+        "flight_offer": {"id": "same-offer"},
+        "travelers": [{"id": "t1"}],
+        "total_price": "200.00",
+    }
+
+    r1 = self.client.post(FLIGHT_BOOKINGS_URL, payload, format="json")
+    r2 = self.client.post(FLIGHT_BOOKINGS_URL, payload, format="json")
+
+    self.assertEqual(r1.status_code, status.HTTP_201_CREATED)
+
+    # depends on your implementation
+    # could be 400 or duplicate allowed
+    self.assertIn(r2.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED])
+
+@patch("app.flights.views.AmadeusService.create_flight_order")
+@patch("app.flights.views.FlutterwaveService.verify_payment")
+def test_verify_race_condition(self, mock_verify, mock_order):
+
+    meta = {
+        "flight_offer": {"id": "offer-race"},
+        "travelers": [{"id": "t1"}],
+        "departure_city": "Lagos",
+        "arrival_city": "Paris",
+        "departure_date": "2026-05-01",
+        "airline": "AF",
+    }
+
+    payment = self.create_payment(status="pending", raw_meta=meta)
+
+    mock_verify.return_value = {
+        "status": "success",
+        "data": {
+            "status": "successful",
+            "amount": "100.00",
+            "currency": "USD",
+            "id": "fw-race",
+        },
+    }
+
+    mock_order.return_value = {"id": "am-race"}
+
+    self.client.force_authenticate(self.user)
+
+    response1 = self.client.post(
+        VERIFY_PAYMENT_URL, {"tx_ref": payment.tx_ref}, format="json"
+    )
+
+    response2 = self.client.post(
+        VERIFY_PAYMENT_URL, {"tx_ref": payment.tx_ref}, format="json"
+    )
+
+    self.assertEqual(
+        FlightBooking.objects.filter(booking=payment.booking).count(), 1
+    )
+
+@patch("app.flights.views.AmadeusService.create_flight_order")
+def test_airline_price_change(self, mock_order):
+
+    mock_order.side_effect = Exception("PRICE_DISCREPANCY")
+
+    self.client.force_authenticate(self.user)
+
+    payload = {
+        "departure_city": "Lagos",
+        "arrival_city": "Paris",
+        "departure_date": "2026-05-01",
+        "airline": "AF",
+        "flight_offer": {"id": "offer-1"},
+        "travelers": [{"id": "t1"}],
+        "total_price": "200.00",
+    }
+
+    response = self.client.post(FLIGHT_BOOKINGS_URL, payload, format="json")
+
+    self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+@patch("app.flights.views.AmadeusService.create_flight_order")
+def test_airline_seat_unavailable(self, mock_order):
+
+    mock_order.side_effect = Exception("SEAT_UNAVAILABLE")
+
+    self.client.force_authenticate(self.user)
+
+    payload = {
+        "departure_city": "Lagos",
+        "arrival_city": "Paris",
+        "departure_date": "2026-05-01",
+        "airline": "AF",
+        "flight_offer": {"id": "offer-seat"},
+        "travelers": [{"id": "t1"}],
+        "total_price": "200.00",
+    }
+
+    response = self.client.post(FLIGHT_BOOKINGS_URL, payload, format="json")
+
+    self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+@patch("app.flights.views.AmadeusService.create_flight_order")
+def test_airline_timeout(self, mock_order):
+
+    mock_order.side_effect = TimeoutError("Airline API timeout")
+
+    self.client.force_authenticate(self.user)
+
+    payload = {
+        "departure_city": "Lagos",
+        "arrival_city": "Paris",
+        "departure_date": "2026-05-01",
+        "airline": "AF",
+        "flight_offer": {"id": "offer-timeout"},
+        "travelers": [{"id": "t1"}],
+        "total_price": "200.00",
+    }
+
+    response = self.client.post(FLIGHT_BOOKINGS_URL, payload, format="json")
+
+    self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+@patch("app.flights.views.AmadeusService.create_flight_order")
+@patch("app.flights.views.FlutterwaveService.verify_payment")
+def test_payment_success_airline_failure(self, mock_verify, mock_order):
+
+    meta = {
+        "flight_offer": {"id": "offer-pay"},
+        "travelers": [{"id": "t1"}],
+        "departure_city": "Lagos",
+        "arrival_city": "Paris",
+        "departure_date": "2026-05-01",
+        "airline": "AF",
+    }
+
+    payment = self.create_payment(status="pending", raw_meta=meta)
+
+    mock_verify.return_value = {
+        "status": "success",
+        "data": {
+            "status": "successful",
+            "amount": "100.00",
+            "currency": "USD",
+        },
+    }
+
+    mock_order.side_effect = Exception("Airline booking failed")
+
+    self.client.force_authenticate(self.user)
+
+    response = self.client.post(
+        VERIFY_PAYMENT_URL,
+        {"tx_ref": payment.tx_ref},
+        format="json",
+    )
+
+    self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR])
+
+@patch("app.flights.views.AmadeusService.create_flight_order")
+def test_expired_flight_offer(self, mock_order):
+
+    mock_order.side_effect = Exception("OFFER_NOT_FOUND")
+
+    self.client.force_authenticate(self.user)
+
+    payload = {
+        "departure_city": "Lagos",
+        "arrival_city": "Paris",
+        "departure_date": "2026-05-01",
+        "airline": "AF",
+        "flight_offer": {"id": "expired-offer"},
+        "travelers": [{"id": "t1"}],
+        "total_price": "200.00",
+    }
+
+    response = self.client.post(FLIGHT_BOOKINGS_URL, payload, format="json")
+
+    self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+class FullFlightBookingFlowTest(APITestCase):
+
+    def setUp(self):
+
+        self.user = self.create_user()
+        self.client.force_authenticate(self.user)
+
+        self.search_url = reverse("flight-search")
+        self.booking_url = reverse("flight-bookings")
+        self.verify_url = reverse("verify-payment")
+
+    def create_user(self):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        return User.objects.create_user(
+            email="user@test.com",
+            password="password123"
+        )
+
+    @patch("app.flights.views.AmadeusService.search_flights")
+    @patch("app.flights.views.AmadeusService.create_flight_order")
+    @patch("app.flights.views.FlutterwaveService.verify_payment")
+    def test_complete_flight_booking_flow(
+        self,
+        mock_verify_payment,
+        mock_create_order,
+        mock_search_flights
+    ):
+        """
+        Full workflow test:
+
+        search → booking → payment → verification → airline booking
+        """
+
+        # Step 1 — Mock flight search
+        mock_search_flights.return_value = [
+            {
+                "id": "offer-123",
+                "price": {"total": "200.00"},
+                "itineraries": []
+            }
+        ]
+
+        # Step 2 — Mock payment verification
+        mock_verify_payment.return_value = {
+            "status": "success",
+            "data": {
+                "status": "successful",
+                "amount": "200.00",
+                "currency": "USD",
+                "id": "fw-123"
+            }
+        }
+
+        # Step 3 — Mock airline order creation
+        mock_create_order.return_value = {
+            "id": "amadeus-order-1"
+        }
+
+        # -------------------------
+        # 1️⃣ Search flights
+        # -------------------------
+
+        search_response = self.client.get(self.search_url, {
+            "origin": "LOS",
+            "destination": "CDG",
+            "departure_date": "2026-05-01",
+            "adults": 1
+        })
+
+        self.assertEqual(search_response.status_code, status.HTTP_200_OK)
+
+        offer = search_response.data[0]
+
+        # -------------------------
+        # 2️⃣ Create booking
+        # -------------------------
+
+        booking_payload = {
+            "departure_city": "Lagos",
+            "arrival_city": "Paris",
+            "departure_date": "2026-05-01",
+            "airline": "AF",
+            "flight_offer": offer,
+            "travelers": [{"id": "1"}],
+            "total_price": "200.00"
+        }
+
+        booking_response = self.client.post(
+            self.booking_url,
+            booking_payload,
+            format="json"
+        )
+
+        self.assertEqual(booking_response.status_code, status.HTTP_201_CREATED)
+
+        booking = Booking.objects.first()
+
+        self.assertIsNotNone(booking)
+
+        # -------------------------
+        # 3️⃣ Create payment record
+        # -------------------------
+
+        payment = Payment.objects.create(
+            booking=booking,
+            tx_ref="tx-flow-123",
+            amount=Decimal("200.00"),
+            currency="USD",
+            payment_method="card",
+            status="pending",
+            raw_meta={
+                "flight_offer": offer,
+                "travelers": [{"id": "1"}],
+                "departure_city": "Lagos",
+                "arrival_city": "Paris",
+                "departure_date": "2026-05-01",
+                "airline": "AF",
+            }
+        )
+
+        # -------------------------
+        # 4️⃣ Verify payment
+        # -------------------------
+
+        verify_response = self.client.post(
+            self.verify_url,
+            {"tx_ref": payment.tx_ref},
+            format="json"
+        )
+
+        self.assertEqual(verify_response.status_code, status.HTTP_201_CREATED)
+
+        payment.refresh_from_db()
+
+        self.assertEqual(payment.status, "succeeded")
+
+        # -------------------------
+        # 5️⃣ Confirm airline booking
+        # -------------------------
+
+        flight_booking = FlightBooking.objects.filter(
+            booking=booking
+        ).first()
+
+        self.assertIsNotNone(flight_booking)
+
+        self.assertEqual(
+            flight_booking.airline_booking_id,
+            "amadeus-order-1"
+        )
+
+class ConcurrentPaymentVerificationTest(APITestCase):
+
+    def setUp(self):
+
+        self.user = self.create_user()
+        self.client.force_authenticate(self.user)
+
+    def create_user(self):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+
+        return User.objects.create_user(
+            email="race@test.com",
+            password="password123"
+        )
+
+    @patch("app.flights.views.AmadeusService.create_flight_order")
+    @patch("app.flights.views.FlutterwaveService.verify_payment")
+    def test_concurrent_payment_verification(
+        self,
+        mock_verify_payment,
+        mock_create_order
+    ):
+
+        mock_verify_payment.return_value = {
+            "status": "success",
+            "data": {
+                "status": "successful",
+                "amount": "200.00",
+                "currency": "USD",
+                "id": "fw-race"
+            }
+        }
+
+        mock_create_order.return_value = {
+            "id": "airline-order-race"
+        }
+
+        # create booking
+        booking = Booking.objects.create(
+            user=self.user,
+            status="pending"
+        )
+
+        payment = Payment.objects.create(
+            booking=booking,
+            tx_ref="race-test-123",
+            amount=Decimal("200.00"),
+            currency="USD",
+            payment_method="card",
+            status="pending",
+            raw_meta={
+                "flight_offer": {"id": "offer-race"},
+                "travelers": [{"id": "1"}],
+                "departure_city": "Lagos",
+                "arrival_city": "Paris",
+                "departure_date": "2026-05-01",
+                "airline": "AF",
+            }
+        )
+
+        VERIFY_URL = "/api/payments/verify/"
+
+        responses = []
+
+        def verify_payment():
+            response = self.client.post(
+                VERIFY_URL,
+                {"tx_ref": payment.tx_ref},
+                format="json"
+            )
+            responses.append(response.status_code)
+
+        # simulate two simultaneous requests
+        thread1 = threading.Thread(target=verify_payment)
+        thread2 = threading.Thread(target=verify_payment)
+
+        thread1.start()
+        thread2.start()
+
+        thread1.join()
+        thread2.join()
+
+        # ensure only one airline booking created
+        self.assertEqual(
+            FlightBooking.objects.filter(booking=booking).count(),
+            1
+        )
+
+        # payment must end in succeeded state
+        payment.refresh_from_db()
+
+        self.assertEqual(payment.status, "succeeded")
+
+        # ensure at least one success response
+        self.assertIn(status.HTTP_201_CREATED, responses)

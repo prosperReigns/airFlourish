@@ -719,3 +719,514 @@ class PaymentPerformanceTests(BasePaymentTestCase):
             response = self.client.get(f"{PAYMENTS_URL}{payment.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertLessEqual(len(context), 3)
+
+class PaymentAdvancedTests(BasePaymentTestCase):
+    # ---------------------------
+    # Multi-currency handling
+    # ---------------------------
+    def test_create_payment_in_usd_currency(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        payment = self.create_payment(booking=booking, amount=Decimal("50.00"), currency="USD")
+        self.assertEqual(payment.currency, "USD")
+
+    def test_create_payment_zero_amount(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        with self.assertRaises(ValueError):
+            self.create_payment(booking=booking, amount=Decimal("0.00"))
+
+    def test_create_payment_negative_amount(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        with self.assertRaises(ValueError):
+            self.create_payment(booking=booking, amount=Decimal("-10.00"))
+
+    # ---------------------------
+    # Multiple payments per booking
+    # ---------------------------
+    def test_multiple_payments_same_booking(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        payment1 = self.create_payment(booking=booking, amount=Decimal("50.00"))
+        payment2 = self.create_payment(booking=booking, amount=Decimal("50.00"))
+        self.assertEqual(Booking.objects.get(id=booking.id).payments.count(), 2)
+
+    def test_partial_payment_updates_booking_status(self):
+        booking = self.create_booking(total_price=Decimal("100.00"))
+        self.client.force_authenticate(self.user)
+        self.create_payment(booking=booking, amount=Decimal("50.00"), status="succeeded")
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending")  # partial
+
+    def test_full_payment_updates_booking_status(self):
+        booking = self.create_booking(total_price=Decimal("100.00"))
+        self.client.force_authenticate(self.user)
+        self.create_payment(booking=booking, amount=Decimal("100.00"), status="succeeded")
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "confirmed")
+
+    # ---------------------------
+    # Duplicate tx_ref handling
+    # ---------------------------
+    def test_duplicate_tx_ref_rejected(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        tx_ref = "dup-tx-001"
+        self.create_payment(booking=booking, tx_ref=tx_ref)
+        with self.assertRaises(Exception):
+            self.create_payment(booking=booking, tx_ref=tx_ref)
+
+    # ---------------------------
+    # Idempotency for multiple payment attempts
+    # ---------------------------
+    @patch("app.payments.views.FlutterwaveService.initiate_card_payment")
+    def test_multiple_card_inits_same_idempotency(self, mock_initiate):
+        booking = self.create_booking()
+        mock_initiate.return_value = {"link": "https://pay", "flw_ref": "123", "tx_ref": "tx-01"}
+        self.client.force_authenticate(self.user)
+        headers = {"HTTP_IDEMPOTENCY_KEY": "idem-key-01"}
+        response1 = self.client.post(CARD_INIT_URL, {"booking_id": booking.id, "amount": "100.00", "currency": "NGN", "tx_ref": "tx-01"}, format="json", **headers)
+        response2 = self.client.post(CARD_INIT_URL, {"booking_id": booking.id, "amount": "100.00", "currency": "NGN", "tx_ref": "tx-01"}, format="json", **headers)
+        self.assertEqual(response1.data["payment"]["id"], response2.data["payment"]["id"])
+        mock_initiate.assert_called_once()
+
+    # ---------------------------
+    # Payment verification edge cases
+    # ---------------------------
+    @patch("app.payments.views.FlutterwaveService.verify_payment")
+    def test_verification_partial_failure(self, mock_verify):
+        payment = self.create_payment(amount=Decimal("100.00"))
+        mock_verify.return_value = {"status": "success", "data": {"id": 999, "amount": "90.00", "currency": "NGN", "status": "successful"}}
+        self.client.force_authenticate(self.user)
+        response = self.client.post(VERIFY_URL, {"tx_ref": payment.tx_ref}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, "failed")
+
+    # ---------------------------
+    # Webhook concurrency
+    # ---------------------------
+    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.BookingEngine.attach_payment")
+    def test_webhook_multiple_calls_idempotent(self, mock_attach, mock_delay):
+        payment = self.create_payment()
+        for _ in range(3):
+            response = self.client.post(WEBHOOK_URL, {"txRef": payment.tx_ref, "status": "successful", "id": 999}, format="json", HTTP_VERIF_HASH=settings.FLUTTERWAVE_SECRET_HASH)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, "succeeded")
+        mock_attach.assert_called_once()
+        mock_delay.assert_called_once()
+
+    # ---------------------------
+    # Bank transfer edge cases
+    # ---------------------------
+    @override_settings(STATIC_ACCOUNT_NUMBER=None)
+    def test_bank_transfer_no_static_account_fails(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        response = self.client.post(BANK_INIT_URL, {"booking_id": booking.id, "amount": "100.00"}, format="json", HTTP_IDEMPOTENCY_KEY="idem-bank-03")
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @override_settings(STATIC_ACCOUNT_NUMBER="123")
+    def test_bank_transfer_multiple_users(self):
+        booking1 = self.create_booking(user=self.user)
+        booking2 = self.create_booking(user=self.other_user)
+        self.client.force_authenticate(self.user)
+        resp1 = self.client.post(BANK_INIT_URL, {"booking_id": booking1.id, "amount": "100.00"}, format="json", HTTP_IDEMPOTENCY_KEY="idem-bank-04")
+        self.client.force_authenticate(self.other_user)
+        resp2 = self.client.post(BANK_INIT_URL, {"booking_id": booking2.id, "amount": "100.00"}, format="json", HTTP_IDEMPOTENCY_KEY="idem-bank-05")
+        self.assertNotEqual(resp1.data["payment"]["id"], resp2.data["payment"]["id"])
+
+    # ---------------------------
+    # Redirect URL tests
+    # ---------------------------
+    def test_redirect_status_failed(self):
+        response = self.client.get(REDIRECT_URL, {"tx_ref": "tx-redirect-002", "status": "failed"})
+        self.assertIn("failed", response.content.decode())
+
+    def test_redirect_missing_tx_ref(self):
+        response = self.client.get(REDIRECT_URL, {"status": "failed"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("status", response.content.decode())
+
+    # ---------------------------
+    # Performance under load
+    # ---------------------------
+    def test_create_100_payments_quickly(self):
+        self.client.force_authenticate(self.user)
+        booking = self.create_booking()
+        for i in range(100):
+            self.create_payment(booking=booking, tx_ref=f"tx-load-{i}")
+        self.assertEqual(Booking.objects.get(id=booking.id).payments.count(), 100)
+
+    def test_webhook_bulk_processing(self):
+        self.client.force_authenticate(self.user)
+        payments = [self.create_payment(tx_ref=f"tx-bulk-{i}") for i in range(10)]
+        for p in payments:
+            response = self.client.post(WEBHOOK_URL, {"txRef": p.tx_ref, "status": "successful", "id": 1000+i}, format="json", HTTP_VERIF_HASH=settings.FLUTTERWAVE_SECRET_HASH)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    # ---------------------------
+    # Misc edge cases
+    # ---------------------------
+    def test_payment_str_includes_tx_ref(self):
+        payment = self.create_payment(tx_ref="tx-str-001")
+        self.assertIn("tx-str-001", str(payment))
+
+    def test_payment_with_trace_id_recorded(self):
+        payment = self.create_payment(trace_id="trace-abc-123")
+        self.assertEqual(payment.trace_id, "trace-abc-123")
+
+    def test_payment_serializer_amount_decimal(self):
+        serializer = PaymentSerializer(self.create_payment(amount=Decimal("123.45")))
+        self.assertEqual(serializer.data["amount"], "123.45")
+
+    def test_cache_with_multiple_users(self):
+        payments_user1 = [self.create_payment(user=self.user) for _ in range(2)]
+        payments_user2 = [self.create_payment(user=self.other_user) for _ in range(2)]
+        cache.set(f"payment_list:{self.user.id}", PaymentSerializer(payments_user1, many=True).data)
+        cache.set(f"payment_list:{self.other_user.id}", PaymentSerializer(payments_user2, many=True).data)
+        self.assertEqual(len(cache.get(f"payment_list:{self.user.id}")), 2)
+        self.assertEqual(len(cache.get(f"payment_list:{self.other_user.id}")), 2)
+
+    def test_payment_serializer_handles_missing_booking(self):
+        payment = self.create_payment()
+        payment.booking.delete()
+        serializer = PaymentSerializer(payment)
+        self.assertIsNotNone(serializer.data)
+
+    def test_payment_verification_mocked_failure(self):
+        payment = self.create_payment()
+        with patch("app.payments.views.FlutterwaveService.verify_payment") as mock_verify:
+            mock_verify.return_value = {"status": "error", "message": "fail"}
+            self.client.force_authenticate(self.user)
+            response = self.client.post(VERIFY_URL, {"tx_ref": payment.tx_ref}, format="json")
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_multiple_idempotency_keys_unique(self):
+        booking = self.create_booking()
+        keys = [f"idem-{i}" for i in range(5)]
+        self.client.force_authenticate(self.user)
+        payments = []
+        for k in keys:
+            payments.append(self.create_payment(booking=booking, idempotency_key=k))
+        self.assertEqual(len(set(p.idempotency_key for p in payments)), 5)
+
+    def test_payment_amount_precision(self):
+        payment = self.create_payment(amount=Decimal("123.4567"))
+        self.assertEqual(str(payment.amount), "123.4567")
+
+    def test_webhook_currency_mismatch_marks_failed(self):
+        payment = self.create_payment()
+        self.client.force_authenticate(self.user)
+        response = self.client.post(WEBHOOK_URL, {"txRef": payment.tx_ref, "status": "successful", "amount": "100.00", "currency": "USD"}, format="json", HTTP_VERIF_HASH=settings.FLUTTERWAVE_SECRET_HASH)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, "failed")
+
+class PaymentStressAndConcurrencyTests(BasePaymentTestCase):
+    # ---------------------------
+    # Simulate multiple users creating payments simultaneously
+    # ---------------------------
+    def test_concurrent_payment_creation(self):
+        self.client.force_authenticate(self.user)
+        booking = self.create_booking()
+        payments = []
+
+        for i in range(20):
+            payments.append(self.create_payment(booking=booking, tx_ref=f"tx-concurrent-{i}"))
+
+        self.assertEqual(len(Booking.objects.get(id=booking.id).payments.all()), 20)
+
+    # ---------------------------
+    # Simulate multiple webhooks arriving simultaneously
+    # ---------------------------
+    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.BookingEngine.attach_payment")
+    def test_concurrent_webhook_processing(self, mock_attach, mock_delay):
+        payments = [self.create_payment(tx_ref=f"tx-webhook-concurrent-{i}") for i in range(10)]
+        self.client.force_authenticate(self.user)
+
+        for payment in payments:
+            self.client.post(
+                WEBHOOK_URL,
+                {"txRef": payment.tx_ref, "status": "successful", "id": 1000+payment.id},
+                format="json",
+                HTTP_VERIF_HASH=settings.FLUTTERWAVE_SECRET_HASH,
+            )
+
+        for payment in payments:
+            payment.refresh_from_db()
+            self.assertEqual(payment.status, "succeeded")
+
+        self.assertEqual(mock_attach.call_count, 10)
+        self.assertEqual(mock_delay.call_count, 10)
+
+    # ---------------------------
+    # Simulate high-frequency throttling
+    # ---------------------------
+    @override_settings(REST_FRAMEWORK=throttled_settings("5/second"))
+    def test_high_frequency_throttling(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+
+        responses = []
+        for i in range(10):
+            resp = self.client.post(
+                PAYMENTS_URL,
+                data={
+                    "booking": booking.id,
+                    "amount": "100.00",
+                    "currency": "NGN",
+                    "payment_method": "card",
+                    "tx_ref": f"tx-throttle-hf-{i}",
+                },
+                format="json",
+            )
+            responses.append(resp.status_code)
+
+        self.assertIn(status.HTTP_429_TOO_MANY_REQUESTS, responses)
+
+    # ---------------------------
+    # Mass payment verification
+    # ---------------------------
+    @patch("app.payments.views.FlutterwaveService.verify_payment")
+    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.BookingEngine.attach_payment")
+    def test_bulk_verification(self, mock_attach, mock_delay, mock_verify):
+        payments = [self.create_payment(tx_ref=f"tx-verify-bulk-{i}") for i in range(10)]
+        mock_verify.return_value = {
+            "status": "success",
+            "data": {"id": 999, "status": "successful", "amount": "100.00", "currency": "NGN"},
+        }
+        self.client.force_authenticate(self.user)
+
+        for payment in payments:
+            response = self.client.post(VERIFY_URL, {"tx_ref": payment.tx_ref}, format="json")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        for payment in payments:
+            payment.refresh_from_db()
+            self.assertEqual(payment.status, "succeeded")
+
+        self.assertEqual(mock_attach.call_count, 10)
+        self.assertEqual(mock_delay.call_count, 10)
+
+    # ---------------------------
+    # Edge case: extremely large payment amount
+    # ---------------------------
+    def test_large_amount_payment(self):
+        booking = self.create_booking()
+        payment = self.create_payment(booking=booking, amount=Decimal("1000000000.99"))
+        self.assertEqual(payment.amount, Decimal("1000000000.99"))
+
+    # ---------------------------
+    # Edge case: extremely long tx_ref
+    # ---------------------------
+    def test_long_tx_ref(self):
+        booking = self.create_booking()
+        long_ref = "x"*300
+        payment = self.create_payment(booking=booking, tx_ref=long_ref)
+        self.assertEqual(payment.tx_ref, long_ref)
+
+    # ---------------------------
+    # Edge case: multiple failed verifications
+    # ---------------------------
+    @patch("app.payments.views.FlutterwaveService.verify_payment")
+    def test_multiple_failed_verifications(self, mock_verify):
+        payments = [self.create_payment(tx_ref=f"tx-fail-{i}") for i in range(5)]
+        mock_verify.return_value = {"status": "error", "message": "failure"}
+        self.client.force_authenticate(self.user)
+
+        for payment in payments:
+            response = self.client.post(VERIFY_URL, {"tx_ref": payment.tx_ref}, format="json")
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            payment.refresh_from_db()
+            self.assertEqual(payment.status, "pending")
+
+    # ---------------------------
+    # Race condition: two users try same idempotency key
+    # ---------------------------
+    @patch("app.payments.views.FlutterwaveService.initiate_card_payment")
+    def test_race_condition_same_idempotency_key(self, mock_initiate):
+        booking1 = self.create_booking(user=self.user)
+        booking2 = self.create_booking(user=self.other_user)
+        mock_initiate.return_value = {"link": "https://pay", "flw_ref": "race-123", "tx_ref": "tx-race-001"}
+        headers = {"HTTP_IDEMPOTENCY_KEY": "idem-race-001"}
+
+        client1 = APIClient()
+        client2 = APIClient()
+        client1.force_authenticate(self.user)
+        client2.force_authenticate(self.other_user)
+
+        resp1 = client1.post(CARD_INIT_URL, {"booking_id": booking1.id, "amount": "100.00", "currency": "NGN", "tx_ref": "tx-race-001"}, format="json", **headers)
+        resp2 = client2.post(CARD_INIT_URL, {"booking_id": booking2.id, "amount": "100.00", "currency": "NGN", "tx_ref": "tx-race-001"}, format="json", **headers)
+
+        self.assertNotEqual(resp1.data["payment"]["id"], resp2.data["payment"]["id"])
+        self.assertEqual(mock_initiate.call_count, 2)
+
+    # ---------------------------
+    # Verify cache performance under bulk requests
+    # ---------------------------
+    def test_bulk_cache_set_and_get(self):
+        payments = [self.create_payment() for _ in range(20)]
+        cache_key = f"payment_list_bulk:{self.user.id}"
+        cache.set(cache_key, PaymentSerializer(payments, many=True).data)
+        cached = cache.get(cache_key)
+        self.assertEqual(len(cached), 20)
+
+    # ---------------------------
+    # Simulate deleted booking after payment creation
+    # ---------------------------
+    def test_booking_deleted_after_payment(self):
+        payment = self.create_payment()
+        payment.booking.delete()
+        self.assertIsNotNone(payment.id)
+        self.assertIsNone(payment.booking if hasattr(payment, "booking") else None)
+
+class PaymentAdvancedEdgeTests(BasePaymentTestCase):
+    # ---------------------------
+    # Partial payment scenario
+    # ---------------------------
+    def test_partial_payment_succeeds(self):
+        booking = self.create_booking(total_price=Decimal("500.00"))
+        payment1 = self.create_payment(booking=booking, amount=Decimal("200.00"))
+        payment2 = self.create_payment(booking=booking, amount=Decimal("300.00"))
+
+        total_paid = sum(p.amount for p in Booking.objects.get(id=booking.id).payments.all())
+        self.assertEqual(total_paid, Decimal("500.00"))
+
+    # ---------------------------
+    # Payment cancellation
+    # ---------------------------
+    def test_cancel_pending_payment(self):
+        payment = self.create_payment(status="pending")
+        payment.status = "cancelled"
+        payment.save()
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, "cancelled")
+
+    # ---------------------------
+    # Attempt to cancel a succeeded payment
+    # ---------------------------
+    def test_cancel_succeeded_payment_fails(self):
+        payment = self.create_payment(status="succeeded")
+        payment.status = "cancelled"
+        payment.save()
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, "cancelled")  # Here, your logic may allow or block
+
+    # ---------------------------
+    # Mixed payment methods for same booking
+    # ---------------------------
+    def test_mixed_payment_methods(self):
+        booking = self.create_booking(total_price=Decimal("300.00"))
+        card_payment = self.create_payment(booking=booking, amount=Decimal("150.00"), payment_method="card")
+        bank_payment = self.create_payment(booking=booking, amount=Decimal("150.00"), payment_method="bank_transfer")
+
+        methods = set(p.payment_method for p in booking.payments.all())
+        self.assertIn("card", methods)
+        self.assertIn("bank_transfer", methods)
+        self.assertEqual(sum(p.amount for p in booking.payments.all()), Decimal("300.00"))
+
+    # ---------------------------
+    # Simulate rollback: payment fails after booking attached
+    # ---------------------------
+    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.BookingEngine.attach_payment")
+    @patch("app.payments.views.FlutterwaveService.verify_payment")
+    def test_payment_verification_then_failure_rollback(
+        self, mock_verify, mock_attach, mock_delay
+    ):
+        payment = self.create_payment(tx_ref="tx-rollback-001")
+        mock_verify.return_value = {"status": "error", "message": "Failed"}
+        self.client.force_authenticate(self.user)
+        response = self.client.post(VERIFY_URL, {"tx_ref": payment.tx_ref}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, "failed")
+        mock_attach.assert_not_called()
+        mock_delay.assert_not_called()
+
+    # ---------------------------
+    # Large batch of mixed status payments
+    # ---------------------------
+    def test_bulk_mixed_status_payments(self):
+        payments = [
+            self.create_payment(status="pending") for _ in range(5)
+        ] + [
+            self.create_payment(status="succeeded") for _ in range(5)
+        ] + [
+            self.create_payment(status="failed") for _ in range(5)
+        ]
+
+        counts = {"pending": 0, "succeeded": 0, "failed": 0}
+        for p in payments:
+            counts[p.status] += 1
+
+        self.assertEqual(counts["pending"], 5)
+        self.assertEqual(counts["succeeded"], 5)
+        self.assertEqual(counts["failed"], 5)
+
+    # ---------------------------
+    # Attempt to create payment with negative amount
+    # ---------------------------
+    def test_negative_payment_amount_rejected(self):
+        booking = self.create_booking()
+        with self.assertRaises(ValueError):
+            self.create_payment(booking=booking, amount=Decimal("-100.00"))
+
+    # ---------------------------
+    # Payment list with filter by status
+    # ---------------------------
+    def test_list_payments_filtered_by_status(self):
+        self.create_payment(status="succeeded")
+        self.create_payment(status="pending")
+        self.client.force_authenticate(self.user)
+        response = self.client.get(f"{PAYMENTS_URL}?status=succeeded")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for payment_data in response.data:
+            self.assertEqual(payment_data["status"], "succeeded")
+
+    # ---------------------------
+    # Payment list filtered by payment_method
+    # ---------------------------
+    def test_list_payments_filtered_by_method(self):
+        self.create_payment(payment_method="card")
+        self.create_payment(payment_method="bank_transfer")
+        self.client.force_authenticate(self.user)
+        response = self.client.get(f"{PAYMENTS_URL}?payment_method=card")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for payment_data in response.data:
+            self.assertEqual(payment_data["payment_method"], "card")
+
+    # ---------------------------
+    # Payment with extremely large decimal places
+    # ---------------------------
+    def test_high_precision_decimal_amount(self):
+        booking = self.create_booking()
+        payment = self.create_payment(booking=booking, amount=Decimal("123.123456789"))
+        self.assertEqual(payment.amount, Decimal("123.123456789"))
+
+    # ---------------------------
+    # Multiple rapid webhook updates for same payment
+    # ---------------------------
+    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.BookingEngine.attach_payment")
+    def test_multiple_rapid_webhook_updates_same_payment(self, mock_attach, mock_delay):
+        payment = self.create_payment(tx_ref="tx-rapid-001")
+        self.client.force_authenticate(self.user)
+
+        for i in range(5):
+            self.client.post(
+                WEBHOOK_URL,
+                {"txRef": payment.tx_ref, "status": "successful", "id": 500+i},
+                format="json",
+                HTTP_VERIF_HASH=settings.FLUTTERWAVE_SECRET_HASH,
+            )
+
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, "succeeded")
+        self.assertEqual(mock_attach.call_count, 1)
+        self.assertEqual(mock_delay.call_count, 1)

@@ -636,3 +636,538 @@ class BookingEngineTests(BaseBookingTestCase):
             total_price=Decimal("150.00"),
         )
         self.assertEqual(booking.currency, "NGN")
+
+class BookingExtraTests(BaseBookingTestCase):
+
+    # -------------------------
+    # Booking Creation Edge Cases
+    # -------------------------
+    def test_create_booking_with_zero_price(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            BOOKINGS_URL, {"service_type": "hotel", "total_price": "0.00"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        booking = Booking.objects.get(id=response.data["id"])
+        self.assertEqual(booking.total_price, Decimal("0.00"))
+
+    def test_create_booking_with_large_price(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            BOOKINGS_URL, {"service_type": "flight", "total_price": "100000000.00"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        booking = Booking.objects.get(id=response.data["id"])
+        self.assertEqual(booking.total_price, Decimal("100000000.00"))
+
+    def test_create_booking_missing_total_price_defaults_to_none(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(BOOKINGS_URL, {"service_type": "hotel"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        booking = Booking.objects.get(id=response.data["id"])
+        self.assertIsNone(booking.total_price)
+
+    def test_create_booking_with_invalid_currency(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            BOOKINGS_URL, {"service_type": "hotel", "total_price": "150.00", "currency": "XXX"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("currency", response.data)
+
+    def test_create_booking_with_extra_fields_ignored(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            BOOKINGS_URL,
+            {"service_type": "hotel", "total_price": "150.00", "unknown_field": "abc"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(hasattr(Booking.objects.get(id=response.data["id"]), "unknown_field"))
+
+    # -------------------------
+    # Booking Update / Patch
+    # -------------------------
+    def test_user_cannot_patch_status(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(f"{BOOKINGS_URL}{booking.id}/", {"status": "confirmed"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_can_patch_status(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.admin)
+        response = self.client.patch(f"{BOOKINGS_URL}{booking.id}/", {"status": "confirmed"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "confirmed")
+
+    def test_patch_booking_total_price(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(f"{BOOKINGS_URL}{booking.id}/", {"total_price": "200.00"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        booking.refresh_from_db()
+        self.assertEqual(booking.total_price, Decimal("200.00"))
+
+    def test_patch_booking_service_type_invalid(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(f"{BOOKINGS_URL}{booking.id}/", {"service_type": "xyz"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_patch_booking_with_no_changes(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(f"{BOOKINGS_URL}{booking.id}/", {})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    # -------------------------
+    # Booking Deletion Edge Cases
+    # -------------------------
+    def test_delete_booking_twice(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.user)
+        self.client.delete(f"{BOOKINGS_URL}{booking.id}/")
+        response = self.client.delete(f"{BOOKINGS_URL}{booking.id}/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_admin_can_delete_any_booking(self):
+        booking = self.create_booking(user=self.other_user)
+        self.client.force_authenticate(self.admin)
+        response = self.client.delete(f"{BOOKINGS_URL}{booking.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    # -------------------------
+    # Booking Listing / Filtering
+    # -------------------------
+    def test_list_bookings_empty_for_new_user(self):
+        self.client.force_authenticate(self.user)
+        Booking.objects.all().delete()
+        response = self.client.get(BOOKINGS_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 0)
+
+    def test_filter_bookings_by_service_type(self):
+        self.create_booking(service_type="hotel")
+        self.create_booking(service_type="flight")
+        self.client.force_authenticate(self.user)
+        response = self.client.get(f"{BOOKINGS_URL}?service_type=flight")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(all(b["service_type"] == "flight" for b in response.data))
+
+    def test_filter_bookings_by_status(self):
+        self.create_booking()
+        confirmed = self.create_booking()
+        confirmed.status = "confirmed"
+        confirmed.save()
+        self.client.force_authenticate(self.user)
+        response = self.client.get(f"{BOOKINGS_URL}?status=confirmed")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(all(b["status"] == "confirmed" for b in response.data))
+
+    def test_list_bookings_ordered_by_created_at(self):
+        b1 = self.create_booking()
+        b2 = self.create_booking()
+        self.client.force_authenticate(self.user)
+        response = self.client.get(f"{BOOKINGS_URL}?ordering=-created_at")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreater(response.data[0]["id"], response.data[1]["id"])
+
+    def test_list_bookings_ordered_by_total_price(self):
+        self.create_booking(total_price=Decimal("100.00"))
+        self.create_booking(total_price=Decimal("200.00"))
+        self.client.force_authenticate(self.user)
+        response = self.client.get(f"{BOOKINGS_URL}?ordering=total_price")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        prices = [Decimal(b["total_price"]) for b in response.data]
+        self.assertEqual(prices, sorted(prices))
+
+    # -------------------------
+    # Flight Search Edge Cases
+    # -------------------------
+    @patch("app.bookings.views.AmadeusService.search_flights")
+    def test_flight_search_empty_result(self, mock_search):
+        self.client.force_authenticate(self.user)
+        mock_search.return_value = []
+        response = self.client.get(
+            FLIGHT_SEARCH_URL,
+            data={"origin": "JFK", "destination": "LAX", "departure_date": "2026-05-01"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    @patch("app.bookings.views.AmadeusService.search_flights")
+    def test_flight_search_invalid_dates(self, mock_search):
+        self.client.force_authenticate(self.user)
+        response = self.client.get(
+            FLIGHT_SEARCH_URL,
+            data={"origin": "JFK", "destination": "LAX", "departure_date": "not-a-date"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # -------------------------
+    # Booking Engine Edge Cases
+    # -------------------------
+    def test_create_booking_without_user_defaults_to_none(self):
+        booking = BookingEngine.create_booking(
+            user=None, service_type="hotel", total_price=Decimal("100.00")
+        )
+        self.assertIsNotNone(booking.user)
+
+    def test_cancel_booking_with_reason_none(self):
+        booking = self.create_booking()
+        BookingEngine.cancel_booking(booking)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+
+    def test_attach_payment_without_reference(self):
+        booking = self.create_booking()
+        BookingEngine.attach_payment(booking, "confirmed")
+        booking.refresh_from_db()
+        self.assertIsNone(booking.external_service_id)
+
+    def test_update_status_invalid_status_ignored(self):
+        booking = self.create_booking()
+        BookingEngine.update_status(booking, "not-valid")
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending")
+
+    def test_create_booking_large_batch(self):
+        for _ in range(10):
+            BookingEngine.create_booking(user=self.user, service_type="hotel", total_price=Decimal("50.00"))
+        self.assertEqual(Booking.objects.filter(user=self.user).count(), 10)
+
+    # -------------------------
+    # Caching / Throttling Additional Cases
+    # -------------------------
+    def test_cache_store_individual_booking(self):
+        booking = self.create_booking()
+        cache_key = f"booking:{booking.id}"
+        BookingSerializer(booking)
+        cache.set(cache_key, booking.id, timeout=60)
+        self.assertEqual(cache.get(cache_key), booking.id)
+
+    def test_cache_clear_after_delete(self):
+        booking = self.create_booking()
+        cache.set(f"booking:{booking.id}", booking.id, timeout=60)
+        booking.delete()
+        self.assertIsNone(cache.get(f"booking:{booking.id}"))
+
+    @override_settings(REST_FRAMEWORK=throttled_settings("1/minute"))
+    def test_throttle_blocks_after_limit(self):
+        self.client.force_authenticate(self.user)
+        for _ in range(2):
+            self.client.get(BOOKINGS_URL)
+        response = self.client.get(BOOKINGS_URL)
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    @override_settings(REST_FRAMEWORK=throttled_settings("2/minute"))
+    def test_throttle_resets_after_clear(self):
+        self.client.force_authenticate(self.user)
+        self.client.get(BOOKINGS_URL)
+        self.client.get(BOOKINGS_URL)
+        cache.clear()
+        response = self.client.get(BOOKINGS_URL)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    # -------------------------
+    # Misc Edge Cases
+    # -------------------------
+    def test_booking_str_with_missing_reference(self):
+        booking = Booking.objects.create(user=self.user, service_type="hotel", reference_code="")
+        self.assertTrue(str(booking).startswith(" - hotel"))
+
+    def test_multiple_bookings_same_user(self):
+        self.create_booking()
+        self.create_booking()
+        self.assertEqual(Booking.objects.filter(user=self.user).count(), 2)
+
+    def test_multiple_users_multiple_bookings(self):
+        self.create_booking(user=self.user)
+        self.create_booking(user=self.other_user)
+        self.assertEqual(Booking.objects.count(), 2)
+
+    def test_booking_serializer_handles_null_fields(self):
+        booking = self.create_booking(total_price=None)
+        serializer = BookingSerializer(booking)
+        self.assertIsNone(serializer.data["total_price"])
+
+    def test_booking_serializer_handles_large_numbers(self):
+        booking = self.create_booking(total_price=Decimal("1000000000.00"))
+        serializer = BookingSerializer(booking)
+        self.assertEqual(serializer.data["total_price"], "1000000000.00")
+
+    def test_booking_engine_create_booking_defaults(self):
+        booking = BookingEngine.create_booking(user=self.user, service_type="hotel")
+        self.assertEqual(booking.currency, "NGN")
+        self.assertEqual(booking.status, "pending")
+
+    def test_booking_engine_cancel_nonexistent_booking(self):
+        booking = BookingEngine.create_booking(user=self.user, service_type="hotel")
+        booking.delete()
+        with self.assertRaises(Booking.DoesNotExist):
+            BookingEngine.cancel_booking(booking)
+
+    def test_booking_engine_attach_payment_nonexistent_booking(self):
+        booking = BookingEngine.create_booking(user=self.user, service_type="hotel")
+        booking.delete()
+        with self.assertRaises(Booking.DoesNotExist):
+            BookingEngine.attach_payment(booking, "confirmed")
+
+    def test_booking_engine_update_status_nonexistent_booking(self):
+        booking = BookingEngine.create_booking(user=self.user, service_type="hotel")
+        booking.delete()
+        with self.assertRaises(Booking.DoesNotExist):
+            BookingEngine.update_status(booking, "confirmed")
+
+class BookingWorkflowTests(BaseBookingTestCase):
+
+    # -------------------------
+    # Booking + Payment Workflow
+    # -------------------------
+    def test_attach_payment_marks_booking_confirmed(self):
+        booking = self.create_booking()
+        BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-001")
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "pending")  # status remains pending unless explicitly updated
+        self.assertEqual(booking.external_service_id, "PAY-001")
+
+    def test_cancel_booking_after_payment(self):
+        booking = self.create_booking()
+        BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-002")
+        BookingEngine.cancel_booking(booking, reason="User request")
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+
+    def test_attach_payment_multiple_times(self):
+        booking = self.create_booking()
+        BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-003")
+        BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-004")
+        booking.refresh_from_db()
+        self.assertEqual(booking.external_service_id, "PAY-004")
+
+    def test_cancel_booking_twice_does_not_raise(self):
+        booking = self.create_booking()
+        BookingEngine.cancel_booking(booking)
+        BookingEngine.cancel_booking(booking)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+
+    def test_create_booking_and_attach_payment_returns_booking(self):
+        booking = BookingEngine.create_booking(user=self.user, service_type="flight")
+        BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-005")
+        self.assertIsInstance(booking, Booking)
+        self.assertEqual(booking.external_service_id, "PAY-005")
+
+    # -------------------------
+    # Flight Search + Booking Workflow
+    # -------------------------
+    @patch("app.bookings.views.AmadeusService.search_flights")
+    def test_flight_search_and_create_booking(self, mock_search):
+        mock_search.return_value = [{"id": "FL-001"}]
+        self.client.force_authenticate(self.user)
+        response = self.client.get(
+            FLIGHT_SEARCH_URL,
+            data={"origin": "JFK", "destination": "LAX", "departure_date": "2026-05-01"},
+        )
+        flight_data = response.data[0]
+        booking = BookingEngine.create_booking(user=self.user, service_type="flight", total_price=Decimal("500.00"))
+        self.assertEqual(booking.service_type, "flight")
+        self.assertEqual(booking.user, self.user)
+
+    @patch("app.bookings.views.AmadeusService.search_flights")
+    def test_booking_after_flight_search_returns_correct_data(self, mock_search):
+        mock_search.return_value = [{"id": "FL-002", "price": 300}]
+        self.client.force_authenticate(self.user)
+        response = self.client.get(
+            FLIGHT_SEARCH_URL,
+            data={"origin": "LHR", "destination": "CDG", "departure_date": "2026-06-01"},
+        )
+        flight_data = response.data[0]
+        booking = BookingEngine.create_booking(user=self.user, service_type="flight", total_price=Decimal(flight_data["price"]))
+        self.assertEqual(booking.total_price, Decimal("300"))
+
+    # -------------------------
+    # Visa Simulation Workflow
+    # -------------------------
+    def test_create_booking_with_visa_required_flag(self):
+        booking = self.create_booking()
+        booking.visa_required = True
+        booking.save()
+        self.assertTrue(booking.visa_required)
+
+    def test_attach_payment_for_visa_booking(self):
+        booking = self.create_booking()
+        booking.visa_required = True
+        booking.save()
+        BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-VISA-001")
+        booking.refresh_from_db()
+        self.assertEqual(booking.external_service_id, "PAY-VISA-001")
+
+    def test_cancel_visa_booking(self):
+        booking = self.create_booking()
+        booking.visa_required = True
+        booking.save()
+        BookingEngine.cancel_booking(booking)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+
+    # -------------------------
+    # Multi-step Workflow
+    # -------------------------
+    def test_full_booking_flow(self):
+        # Step 1: Flight search
+        with patch("app.bookings.views.AmadeusService.search_flights") as mock_search:
+            mock_search.return_value = [{"id": "FL-003", "price": 400}]
+            self.client.force_authenticate(self.user)
+            flight_results = self.client.get(
+                FLIGHT_SEARCH_URL,
+                data={"origin": "NYC", "destination": "MIA", "departure_date": "2026-07-01"},
+            ).data
+        flight_info = flight_results[0]
+
+        # Step 2: Create booking
+        booking = BookingEngine.create_booking(user=self.user, service_type="flight", total_price=Decimal(flight_info["price"]))
+        self.assertEqual(booking.total_price, Decimal("400"))
+
+        # Step 3: Attach payment
+        BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-006")
+        booking.refresh_from_db()
+        self.assertEqual(booking.external_service_id, "PAY-006")
+
+        # Step 4: Cancel booking
+        BookingEngine.cancel_booking(booking)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+
+    def test_multiple_bookings_and_payments(self):
+        booking1 = self.create_booking(service_type="hotel")
+        booking2 = self.create_booking(service_type="flight")
+        BookingEngine.attach_payment(booking1, status="confirmed", payment_reference="PAY-007")
+        BookingEngine.attach_payment(booking2, status="confirmed", payment_reference="PAY-008")
+        self.assertEqual(booking1.external_service_id, "PAY-007")
+        self.assertEqual(booking2.external_service_id, "PAY-008")
+
+    def test_batch_flight_bookings(self):
+        bookings = []
+        for i in range(5):
+            bookings.append(BookingEngine.create_booking(user=self.user, service_type="flight", total_price=Decimal("200.00")))
+        self.assertEqual(len(bookings), 5)
+        self.assertEqual(Booking.objects.filter(user=self.user, service_type="flight").count(), 5)
+
+    # -------------------------
+    # Edge Cases: Invalid Workflow
+    # -------------------------
+    def test_attach_payment_invalid_booking(self):
+        booking = self.create_booking()
+        booking.delete()
+        with self.assertRaises(Booking.DoesNotExist):
+            BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-INVALID")
+
+    def test_cancel_nonexistent_booking(self):
+        booking = self.create_booking()
+        booking.delete()
+        with self.assertRaises(Booking.DoesNotExist):
+            BookingEngine.cancel_booking(booking)
+
+    def test_update_status_invalid_booking(self):
+        booking = self.create_booking()
+        booking.delete()
+        with self.assertRaises(Booking.DoesNotExist):
+            BookingEngine.update_status(booking, "confirmed")
+
+    def test_create_booking_after_delete_previous(self):
+        booking1 = self.create_booking()
+        booking1.delete()
+        booking2 = self.create_booking()
+        self.assertEqual(Booking.objects.count(), 1)
+
+    # -------------------------
+    # Serializer + Payment Integration
+    # -------------------------
+    def test_serializer_includes_external_service_id(self):
+        booking = self.create_booking()
+        BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-009")
+        serializer = BookingSerializer(booking)
+        self.assertEqual(serializer.data["id"], booking.id)
+
+    def test_serializer_handles_cancelled_booking(self):
+        booking = self.create_booking()
+        BookingEngine.cancel_booking(booking)
+        serializer = BookingSerializer(booking)
+        self.assertEqual(serializer.data["status"], "cancelled")
+
+    # -------------------------
+    # Admin Permissions Workflow
+    # -------------------------
+    def test_admin_can_update_booking_total_price(self):
+        booking = self.create_booking()
+        self.client.force_authenticate(self.admin)
+        response = self.client.patch(f"{BOOKINGS_URL}{booking.id}/", {"total_price": "999.00"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        booking.refresh_from_db()
+        self.assertEqual(booking.total_price, Decimal("999.00"))
+
+    def test_admin_can_cancel_other_user_booking(self):
+        booking = self.create_booking(user=self.other_user)
+        self.client.force_authenticate(self.admin)
+        response = self.client.delete(f"{BOOKINGS_URL}{booking.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_admin_can_view_all_bookings(self):
+        self.create_booking(user=self.user)
+        self.create_booking(user=self.other_user)
+        self.client.force_authenticate(self.admin)
+        response = self.client.get(BOOKINGS_URL)
+        self.assertEqual(len(response.data), 2)
+
+    # -------------------------
+    # Booking + Flight + Visa + Payment Combined
+    # -------------------------
+    def test_full_multi_model_flow(self):
+        booking = BookingEngine.create_booking(user=self.user, service_type="flight")
+        booking.visa_required = True
+        booking.save()
+        BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-010")
+        BookingEngine.cancel_booking(booking)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, "cancelled")
+        self.assertTrue(booking.visa_required)
+        self.assertEqual(booking.external_service_id, "PAY-010")
+
+    def test_create_flight_booking_with_visa_and_payment(self):
+        booking = BookingEngine.create_booking(user=self.user, service_type="flight")
+        booking.visa_required = True
+        booking.save()
+        BookingEngine.attach_payment(booking, status="confirmed", payment_reference="PAY-011")
+        booking.refresh_from_db()
+        self.assertTrue(booking.visa_required)
+        self.assertEqual(booking.external_service_id, "PAY-011")
+
+    def test_multiple_flight_bookings_with_payments_and_visa(self):
+        bookings = []
+        for i in range(3):
+            b = BookingEngine.create_booking(user=self.user, service_type="flight")
+            b.visa_required = True
+            b.save()
+            BookingEngine.attach_payment(b, status="confirmed", payment_reference=f"PAY-012-{i}")
+            bookings.append(b)
+        for i, b in enumerate(bookings):
+            self.assertTrue(b.visa_required)
+            self.assertEqual(b.external_service_id, f"PAY-012-{i}")
+
+    def test_booking_workflow_query_efficiency(self):
+        for _ in range(5):
+            self.create_booking()
+        self.client.force_authenticate(self.user)
+        with CaptureQueriesContext(connection) as context:
+            response = self.client.get(BOOKINGS_URL)
+        self.assertLessEqual(len(context), 3)
+
+    def test_multi_user_workflow_isolated(self):
+        booking1 = self.create_booking(user=self.user)
+        booking2 = self.create_booking(user=self.other_user)
+        BookingEngine.attach_payment(booking1, status="confirmed", payment_reference="PAY-020")
+        BookingEngine.attach_payment(booking2, status="confirmed", payment_reference="PAY-021")
+        self.assertEqual(booking1.external_service_id, "PAY-020")
+        self.assertEqual(booking2.external_service_id, "PAY-021")
