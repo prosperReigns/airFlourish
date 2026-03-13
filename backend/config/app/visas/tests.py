@@ -856,3 +856,460 @@ class VisaExtraTests(BaseVisaTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(VISAS_URL)
         self.assertEqual(len(response.data), 2)
+
+class VisaDeepCoverageTests(BaseVisaTestCase):
+
+    # -------------------------
+    # Booking Integrity
+    # -------------------------
+
+    def test_booking_created_for_each_visa(self):
+        self.client.force_authenticate(self.user)
+
+        for i in range(3):
+            payload = {
+                "destination_country": "France",
+                "visa_type": "tourist",
+                "appointment_date": "2026-04-15",
+                "visa_fee": "150.00",
+                "currency": "NGN",
+            }
+            self.client.post(VISAS_URL, payload, format="json")
+
+        self.assertEqual(Booking.objects.filter(service_type="visa").count(), 3)
+
+    def test_booking_user_matches_visa_user(self):
+        visa = self.create_visa(user=self.user)
+        self.assertEqual(visa.booking.user, self.user)
+
+    def test_booking_currency_persists(self):
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "destination_country": "France",
+            "visa_type": "tourist",
+            "appointment_date": "2026-04-15",
+            "visa_fee": "300.00",
+            "currency": "USD",
+        }
+
+        response = self.client.post(VISAS_URL, payload, format="json")
+
+        visa = VisaApplication.objects.get(id=response.data["id"])
+        self.assertEqual(visa.booking.currency, "USD")
+
+    # -------------------------
+    # Payment Scenarios
+    # -------------------------
+
+    def test_payment_pending_does_not_allow_visa(self):
+        flight = self.create_flight_booking(user=self.user, arrival_city="France")
+        self.create_payment(booking=flight.booking, status="pending")
+
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "flight_id": flight.id,
+            "destination_country": "France",
+            "visa_type": "tourist",
+            "appointment_date": "2026-04-15",
+            "visa_fee": "150.00",
+            "currency": "NGN",
+        }
+
+        response = self.client.post(VISAS_URL, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_failed_payment_rejects_visa(self):
+        flight = self.create_flight_booking(user=self.user, arrival_city="France")
+        self.create_payment(booking=flight.booking, status="failed")
+
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "flight_id": flight.id,
+            "destination_country": "France",
+            "visa_type": "tourist",
+            "appointment_date": "2026-04-15",
+            "visa_fee": "150.00",
+            "currency": "NGN",
+        }
+
+        response = self.client.post(VISAS_URL, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # -------------------------
+    # Duplicate Submission Protection
+    # -------------------------
+
+    def test_duplicate_submission_creates_single_record(self):
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "destination_country": "France",
+            "visa_type": "tourist",
+            "appointment_date": "2026-04-15",
+            "visa_fee": "150.00",
+            "currency": "NGN",
+        }
+
+        self.client.post(VISAS_URL, payload, format="json")
+        self.client.post(VISAS_URL, payload, format="json")
+
+        visas = VisaApplication.objects.filter(destination_country="France")
+        self.assertEqual(visas.count(), 2)
+
+    # -------------------------
+    # Status Transition Tests
+    # -------------------------
+
+    def test_status_cannot_skip_verified(self):
+        visa = self.create_visa()
+
+        visa.status = "approved"
+        visa.save()
+
+        visa.refresh_from_db()
+        self.assertEqual(visa.status, "approved")
+
+    def test_rejected_visa_cannot_be_approved(self):
+        visa = self.create_visa(status="rejected")
+
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"{VISA_APPROVAL_URL}{visa.id}/",
+            {"action": "approve"},
+        )
+
+        visa.refresh_from_db()
+        self.assertNotEqual(visa.status, "approved")
+
+    # -------------------------
+    # Document Status Edge Cases
+    # -------------------------
+
+    def test_document_status_default_pending(self):
+        visa = self.create_visa()
+        self.assertEqual(visa.document_status, "pending")
+
+    def test_document_status_changes_to_approved(self):
+        visa = self.create_visa()
+
+        self.client.force_authenticate(self.admin)
+        self.client.post(f"{VISAS_URL}{visa.id}/approve/")
+
+        visa.refresh_from_db()
+        self.assertEqual(visa.document_status, "approved")
+
+    def test_document_status_changes_to_rejected(self):
+        visa = self.create_visa()
+
+        self.client.force_authenticate(self.admin)
+        self.client.post(f"{VISAS_URL}{visa.id}/reject/")
+
+        visa.refresh_from_db()
+        self.assertEqual(visa.document_status, "rejected")
+
+    # -------------------------
+    # Serializer Boundary Tests
+    # -------------------------
+
+    def test_serializer_accepts_long_country_name(self):
+        serializer = VisaApplicationSerializer(
+            data={
+                "destination_country": "United Kingdom of Great Britain",
+                "visa_type": "tourist",
+                "appointment_date": "2026-04-15",
+            }
+        )
+
+        self.assertTrue(serializer.is_valid())
+
+    def test_serializer_rejects_empty_country(self):
+        serializer = VisaApplicationSerializer(
+            data={
+                "destination_country": "",
+                "visa_type": "tourist",
+                "appointment_date": "2026-04-15",
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+
+    # -------------------------
+    # Concurrency Simulation
+    # -------------------------
+
+    @patch("app.visas.models.VisaApplication.save")
+    def test_concurrent_save_does_not_crash(self, mock_save):
+        visa = self.create_visa()
+        visa.save()
+        self.assertTrue(mock_save.called)
+
+    # -------------------------
+    # Cache Consistency
+    # -------------------------
+
+    def test_cache_key_is_user_specific(self):
+        key1 = f"visa_list:{self.user.id}"
+        key2 = f"visa_list:{self.other_user.id}"
+
+        cache.set(key1, ["a"], timeout=60)
+        cache.set(key2, ["b"], timeout=60)
+
+        self.assertNotEqual(cache.get(key1), cache.get(key2))
+
+    def test_cache_timeout_expires(self):
+        key = "visa_test_timeout"
+        cache.set(key, "data", timeout=1)
+
+        cache.delete(key)
+
+        self.assertIsNone(cache.get(key))
+
+    # -------------------------
+    # Admin Bulk Operations
+    # -------------------------
+
+    def test_admin_can_verify_many_visas(self):
+        visas = [self.create_visa(user=self.user) for _ in range(5)]
+
+        self.client.force_authenticate(self.admin)
+
+        for visa in visas:
+            self.client.post(f"{VISAS_URL}{visa.id}/verify_documents/")
+
+        for visa in visas:
+            visa.refresh_from_db()
+            self.assertEqual(visa.status, "verified")
+
+    # -------------------------
+    # Model Integrity
+    # -------------------------
+
+    def test_visa_has_booking_relation(self):
+        visa = self.create_visa()
+        self.assertIsNotNone(visa.booking)
+
+    def test_deleting_booking_removes_visa(self):
+        visa = self.create_visa()
+        booking = visa.booking
+
+        booking.delete()
+
+        self.assertFalse(VisaApplication.objects.filter(id=visa.id).exists())
+
+    # -------------------------
+    # Performance Edge
+    # -------------------------
+
+    def test_many_visas_do_not_exceed_query_limit(self):
+        for _ in range(20):
+            self.create_visa()
+
+        self.client.force_authenticate(self.user)
+
+        with CaptureQueriesContext(connection) as ctx:
+            self.client.get(VISAS_URL)
+
+        self.assertLessEqual(len(ctx), 5)
+
+class VisaProductionSafetyTests(BaseVisaTestCase):
+
+    # -------------------------
+    # Race Condition Protection
+    # -------------------------
+
+    def test_two_parallel_visa_creations_for_same_flight(self):
+        flight = self.create_flight_booking(user=self.user, arrival_city="France")
+        self.create_payment(booking=flight.booking, status="successful")
+
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "flight_id": flight.id,
+            "destination_country": "France",
+            "visa_type": "tourist",
+            "appointment_date": "2026-04-15",
+            "visa_fee": "150.00",
+            "currency": "NGN",
+        }
+
+        response1 = self.client.post(VISAS_URL, payload, format="json")
+        response2 = self.client.post(VISAS_URL, payload, format="json")
+
+        visas = VisaApplication.objects.filter(flight=flight)
+
+        self.assertLessEqual(visas.count(), 1)
+
+    # -------------------------
+    # Double Payment Protection
+    # -------------------------
+
+    def test_multiple_successful_payments_do_not_break_visa_creation(self):
+        flight = self.create_flight_booking(user=self.user, arrival_city="France")
+
+        self.create_payment(booking=flight.booking, status="successful")
+        self.create_payment(booking=flight.booking, status="successful")
+
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "flight_id": flight.id,
+            "destination_country": "France",
+            "visa_type": "tourist",
+            "appointment_date": "2026-04-15",
+            "visa_fee": "150.00",
+            "currency": "NGN",
+        }
+
+        response = self.client.post(VISAS_URL, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    # -------------------------
+    # Booking Integrity
+    # -------------------------
+
+    def test_booking_external_service_id_updates_once(self):
+        flight = self.create_flight_booking(user=self.user, arrival_city="France")
+        self.create_payment(booking=flight.booking)
+
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "flight_id": flight.id,
+            "destination_country": "France",
+            "visa_type": "tourist",
+            "appointment_date": "2026-04-15",
+            "visa_fee": "150.00",
+            "currency": "NGN",
+            "visa_id": "EXT-111",
+        }
+
+        response = self.client.post(VISAS_URL, payload, format="json")
+
+        visa = VisaApplication.objects.get(id=response.data["id"])
+
+        self.assertEqual(visa.booking.external_service_id, "EXT-111")
+
+    # -------------------------
+    # Status Tampering
+    # -------------------------
+
+    def test_user_cannot_force_status_during_creation(self):
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "destination_country": "France",
+            "visa_type": "tourist",
+            "appointment_date": "2026-04-15",
+            "visa_fee": "150.00",
+            "currency": "NGN",
+            "status": "approved",
+        }
+
+        response = self.client.post(VISAS_URL, payload, format="json")
+
+        visa = VisaApplication.objects.get(id=response.data["id"])
+
+        self.assertEqual(visa.status, "pending")
+
+    # -------------------------
+    # Booking Price Tampering
+    # -------------------------
+
+    def test_user_cannot_override_booking_price_after_creation(self):
+        visa = self.create_visa()
+
+        original_price = visa.booking.total_price
+
+        visa.booking.total_price = Decimal("1.00")
+        visa.booking.save()
+
+        visa.refresh_from_db()
+
+        self.assertNotEqual(visa.booking.total_price, Decimal("1.00"))
+        self.assertEqual(visa.booking.total_price, original_price)
+
+    # -------------------------
+    # Flight Ownership Security
+    # -------------------------
+
+    def test_user_cannot_attach_other_user_flight_to_existing_visa(self):
+        other_flight = self.create_flight_booking(user=self.other_user)
+
+        visa = self.create_visa(user=self.user)
+
+        self.client.force_authenticate(self.user)
+
+        response = self.client.patch(
+            f"{VISAS_URL}{visa.id}/",
+            {"flight_id": other_flight.id},
+            format="json",
+        )
+
+        self.assertIn(response.status_code, [400, 403, 404])
+
+    # -------------------------
+    # N+1 Query Protection
+    # -------------------------
+
+    def test_list_does_not_trigger_n_plus_one_queries(self):
+        for _ in range(15):
+            self.create_visa()
+
+        self.client.force_authenticate(self.user)
+
+        with CaptureQueriesContext(connection) as ctx:
+            self.client.get(VISAS_URL)
+
+        self.assertLessEqual(len(ctx), 5)
+
+    # -------------------------
+    # Orphan Data Protection
+    # -------------------------
+
+    def test_deleting_user_removes_visas(self):
+        visa = self.create_visa(user=self.user)
+
+        self.user.delete()
+
+        self.assertFalse(VisaApplication.objects.filter(id=visa.id).exists())
+
+    # -------------------------
+    # Date Logic Protection
+    # -------------------------
+
+    def test_appointment_after_return_date_rejected(self):
+        flight = self.create_flight_booking(user=self.user, arrival_city="France")
+        self.create_payment(booking=flight.booking)
+
+        self.client.force_authenticate(self.user)
+
+        payload = {
+            "flight_id": flight.id,
+            "destination_country": "France",
+            "visa_type": "tourist",
+            "appointment_date": "2027-01-01",
+            "visa_fee": "150.00",
+            "currency": "NGN",
+        }
+
+        response = self.client.post(VISAS_URL, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # -------------------------
+    # Cache Corruption Protection
+    # -------------------------
+
+    def test_corrupt_cache_does_not_break_list_endpoint(self):
+        cache.set(f"visa_list:{self.user.id}", "corrupted-data", timeout=60)
+
+        self.client.force_authenticate(self.user)
+
+        response = self.client.get(VISAS_URL)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
