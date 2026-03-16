@@ -125,4 +125,4 @@ def mark_transaction_failed(transaction, provider_response=None):
         )
 
         original_transaction.refresh_from_db()
-    return transaction
+    return original_transaction
