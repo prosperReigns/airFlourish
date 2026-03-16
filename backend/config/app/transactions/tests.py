@@ -16,7 +16,7 @@ class TransactionServiceTests(TestCase):
             country="NG",
         )
 
-    def test_mark_transaction_success_idempotent(self):
+    def test_mark_transaction_success_prevents_duplicate_wallet_credits(self):
         booking = BookingEngine.create_booking(
             user=self.user,
             service_type="hotel",

@@ -8,7 +8,7 @@ def credit_wallet(wallet: Wallet, amount: Decimal, description: str, transaction
     with transaction.atomic():
 
         wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
-        wallet.balance = (wallet.balance or Decimal("0.00")) + amount
+        wallet.balance = (wallet.balance if wallet.balance is not None else Decimal("0.00")) + amount
         wallet.save(update_fields=["balance"])
 
         LedgerEntry.objects.create(
