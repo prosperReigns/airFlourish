@@ -11,7 +11,8 @@ from django.db import transaction
 from django.conf import settings
 from django.http import HttpResponse
 from app.services.booking_engine import BookingEngine
-from app.services.tasks import process_flight_booking
+from app.payments.tasks import process_successful_payment
+from app.transactions.services import get_or_create_transaction, mark_transaction_failed
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
@@ -189,23 +190,33 @@ class FlutterwaveWebhookView(APIView):
 
             payment.status = "succeeded"
             payment.flutterwave_charge_id = str(charge_id)
-            payment.raw_response = data
+            existing_meta = (payment.raw_response or {}).get("meta", {})
+            payment.raw_response = {"meta": existing_meta, "flutterwave": data}
             payment.paid_at = timezone.now()
             payment.save()
 
             BookingEngine.attach_payment(payment.booking, 'confirmed')
 
             transaction.on_commit(
-                lambda: process_flight_booking.delay(str(payment.id))
+                lambda: process_successful_payment.delay(str(payment.id))
             )
 
             return Response({"message": "Payment processed"}, status=200)
 
         payment.status = "failed"
-        payment.raw_response = data
+        existing_meta = (payment.raw_response or {}).get("meta", {})
+        payment.raw_response = {"meta": existing_meta, "flutterwave": data}
         payment.save()
 
         BookingEngine.update_status(payment.booking, 'failed')
+
+        transaction_obj = get_or_create_transaction(
+            booking=payment.booking,
+            reference=payment.tx_ref,
+            amount=payment.amount,
+            currency=payment.currency,
+        )
+        mark_transaction_failed(transaction_obj, provider_response=payment.raw_response)
 
         return Response({"status": "failed"}, status=200)
 
@@ -292,6 +303,14 @@ class CardPaymentInitView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        if amount is None:
+            amount = booking.total_price
+        if amount is None:
+            return Response(
+                {"error": "amount is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         customer_email = request.user.email
 
         flutterwave_response = FlutterwaveService().initiate_card_payment(
@@ -307,6 +326,13 @@ class CardPaymentInitView(APIView):
             idempotency_key=idempotency_key,
             trace_id=trace_id,
             status="pending",
+        )
+
+        get_or_create_transaction(
+            booking=booking,
+            reference=tx_ref,
+            amount=amount,
+            currency=currency,
         )
 
         return Response({
@@ -387,7 +413,7 @@ class BankTransferInitView(APIView):
 
         booking_id = request.data.get("booking_id")
         amount = request.data.get("amount")
-        currency = "NGN"
+        currency = request.data.get("currency", "NGN")
 
         idempotency_key = request.headers.get("Idempotency-Key")
         trace_id = request.headers.get("X-Trace-Id")
@@ -416,6 +442,14 @@ class BankTransferInitView(APIView):
         import uuid
         tx_ref = str(uuid.uuid4())
 
+        if amount is None:
+            amount = booking.total_price
+        if amount is None:
+            return Response(
+                {"error": "amount is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         payment = Payment.objects.create(
             booking=booking,
             amount=amount,
@@ -425,6 +459,13 @@ class BankTransferInitView(APIView):
             idempotency_key=idempotency_key,
             trace_id=trace_id,
             status="pending",
+        )
+
+        get_or_create_transaction(
+            booking=booking,
+            reference=tx_ref,
+            amount=amount,
+            currency=currency,
         )
 
         return Response({
@@ -555,14 +596,15 @@ class PaymentVerificationView(APIView):
 
             payment.status = "succeeded"
             payment.flutterwave_charge_id = str(data.get("id"))
-            payment.raw_response = verification_response
+            existing_meta = (payment.raw_response or {}).get("meta", {})
+            payment.raw_response = {"meta": existing_meta, "flutterwave": verification_response}
             payment.paid_at = timezone.now()
             payment.save()
 
             BookingEngine.attach_payment(payment.booking, "confirmed")
 
             transaction.on_commit(
-                lambda: process_flight_booking.delay(str(payment.id))
+                lambda: process_successful_payment.delay(str(payment.id))
             )
 
             return Response({
@@ -571,10 +613,19 @@ class PaymentVerificationView(APIView):
             })
 
         payment.status = "failed"
-        payment.raw_response = verification_response
+        existing_meta = (payment.raw_response or {}).get("meta", {})
+        payment.raw_response = {"meta": existing_meta, "flutterwave": verification_response}
         payment.save()
 
         BookingEngine.update_status(payment.booking, "failed")
+
+        transaction_obj = get_or_create_transaction(
+            booking=payment.booking,
+            reference=payment.tx_ref,
+            amount=payment.amount,
+            currency=payment.currency,
+        )
+        mark_transaction_failed(transaction_obj, provider_response=payment.raw_response)
 
         return Response({
             "error": "Payment verification failed",

@@ -7,11 +7,17 @@ from app.notifications.models import Notification
 def create_transaction_notification(sender, instance, created, **kwargs):
     if created:
         # Determine notification type
-        notification_type = "success" if instance.status == "success" else "error" if instance.status == "failed" else "info"
-        
+        notification_type = (
+            "success"
+            if instance.status == "successful"
+            else "error"
+            if instance.status == "failed"
+            else "info"
+        )
+
         title_map = {
             "pending": "Transaction Pending",
-            "success": "Transaction Successful",
+            "successful": "Transaction Successful",
             "failed": "Transaction Failed",
         }
 
