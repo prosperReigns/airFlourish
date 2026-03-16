@@ -1,12 +1,15 @@
 import uuid
+from decimal import Decimal, InvalidOperation
 
 from celery import shared_task
+from django.utils import timezone
 
 from app.audit.services import log_action
 from app.hotels.models import HotelReservation
 from app.notifications.services import create_notification
 from app.payments.models import Payment
 from app.services.booking_engine import BookingEngine
+from app.services.flutterwave import FlutterwaveService
 from app.services.tasks import process_flight_booking_logic
 from app.transactions.services import (
     get_or_create_transaction,
@@ -55,9 +58,64 @@ def process_successful_payment(self, payment_id):
         payment_uuid = uuid.UUID(str(payment_id))
         payment = Payment.objects.select_related("booking", "booking__user").get(id=payment_uuid)
         booking = payment.booking
+        raw_response = dict(payment.raw_response or {})
+        raw_response.setdefault("meta", {})
+        verification = raw_response.get("verification")
+        if not verification:
+            flutterwave_payload = raw_response.get("flutterwave")
+            if isinstance(flutterwave_payload, dict) and flutterwave_payload.get("status") == "success":
+                verification = flutterwave_payload
+        if not verification:
+            verification = FlutterwaveService().verify_payment(payment.tx_ref)
 
-        if payment.status != "succeeded":
-            return f"Payment {payment_id} not successful"
+        raw_response["verification"] = verification
+
+        if verification.get("status") != "success":
+            payment.status = "failed"
+            payment.raw_response = raw_response
+            payment.save(update_fields=["status", "raw_response"])
+            BookingEngine.update_status(booking, "failed")
+            transaction = get_or_create_transaction(
+                booking=booking,
+                reference=payment.tx_ref,
+                amount=payment.amount,
+                currency=payment.currency,
+            )
+            mark_transaction_failed(transaction, provider_response=payment.raw_response)
+            return f"Payment {payment_id} failed verification"
+
+        verification_data = verification.get("data", {})
+        try:
+            verified_amount = Decimal(str(verification_data.get("amount")))
+        except (InvalidOperation, TypeError):
+            verified_amount = None
+
+        if (
+            verification_data.get("status") != "successful"
+            or verification_data.get("currency") != payment.currency
+            or verified_amount is None
+            or verified_amount != payment.amount
+        ):
+            payment.status = "failed"
+            payment.raw_response = raw_response
+            payment.save(update_fields=["status", "raw_response"])
+            BookingEngine.update_status(booking, "failed")
+            transaction = get_or_create_transaction(
+                booking=booking,
+                reference=payment.tx_ref,
+                amount=payment.amount,
+                currency=payment.currency,
+            )
+            mark_transaction_failed(transaction, provider_response=payment.raw_response)
+            return f"Payment {payment_id} failed verification"
+
+        payment.status = "succeeded"
+        if verification_data.get("id"):
+            payment.flutterwave_charge_id = str(verification_data.get("id"))
+        if payment.paid_at is None:
+            payment.paid_at = timezone.now()
+        payment.raw_response = raw_response
+        payment.save(update_fields=["status", "flutterwave_charge_id", "paid_at", "raw_response"])
 
         transaction = get_or_create_transaction(
             booking=booking,

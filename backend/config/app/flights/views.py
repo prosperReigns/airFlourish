@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.utils import timezone
@@ -15,7 +15,13 @@ from app.services.amadeus import AmadeusService
 from app.services.booking_engine import BookingEngine
 from app.services.flutterwave import FlutterwaveService
 from app.services.reference_generator import generate_booking_reference
-from app.transactions.services import get_or_create_transaction
+from app.audit.services import log_action
+from app.notifications.services import create_notification
+from app.transactions.services import (
+    get_or_create_transaction,
+    mark_transaction_failed,
+    mark_transaction_success,
+)
 from .models import FlightBooking
 from .serializers import FlightBookingSerializer
 
@@ -403,72 +409,104 @@ class VerifyFlightPaymentView(APIView):
             )
 
         verification = FlutterwaveService().verify_payment(tx_ref)
-        if verification.get("status") != "success":
+        meta = (payment.raw_response or {}).get("meta", {})
+
+        def mark_verification_failed(message, details, status_code=status.HTTP_400_BAD_REQUEST):
             payment.status = "failed"
             payment.raw_response = {
-                "meta": (payment.raw_response or {}).get("meta", {}),
-                "verification": verification,
+                "meta": meta,
+                "verification": details,
             }
             payment.save()
             BookingEngine.update_status(payment.booking, "failed")
-            return Response(
-                {"error": "Payment verification failed", "details": verification},
-                status=status.HTTP_400_BAD_REQUEST,
+            transaction_obj = get_or_create_transaction(
+                booking=payment.booking,
+                reference=payment.tx_ref,
+                amount=payment.amount,
+                currency=payment.currency,
             )
+            mark_transaction_failed(transaction_obj, provider_response=payment.raw_response)
+            return Response({"error": message, "details": details}, status=status_code)
+
+        def mark_booking_failed(message, details=None, status_code=status.HTTP_400_BAD_REQUEST):
+            payment.status = "booking_failed"
+            payment.raw_response = {
+                "meta": meta,
+                "verification": verification,
+                "booking_error": details,
+            }
+            payment.save()
+            BookingEngine.update_status(payment.booking, "failed")
+            transaction_obj = get_or_create_transaction(
+                booking=payment.booking,
+                reference=payment.tx_ref,
+                amount=payment.amount,
+                currency=payment.currency,
+            )
+            mark_transaction_failed(transaction_obj, provider_response=payment.raw_response)
+            log_action(
+                actor=payment.booking.user,
+                action="booking_failed",
+                metadata={"booking_id": str(payment.booking.id), "service_type": "flight"},
+            )
+            payload = {"error": message}
+            if details is not None:
+                payload["details"] = details
+            return Response(payload, status=status_code)
+
+        def finalize_successful_payment(updated_meta):
+            payment.status = "succeeded"
+            payment.flutterwave_charge_id = str(verification_data.get("id"))
+            payment.paid_at = timezone.now()
+            payment.raw_response = {
+                "meta": updated_meta,
+                "verification": verification,
+            }
+            payment.save()
+            BookingEngine.attach_payment(
+                payment.booking,
+                "confirmed",
+                payment_reference=str(verification_data.get("id")),
+            )
+            transaction_obj = get_or_create_transaction(
+                booking=payment.booking,
+                reference=payment.tx_ref,
+                amount=payment.amount,
+                currency=payment.currency,
+            )
+            mark_transaction_success(transaction_obj, provider_response=payment.raw_response)
+            create_notification(
+                user=payment.booking.user,
+                title="Booking confirmed",
+                message="Your flight booking is confirmed.",
+                notification_type="success",
+            )
+            log_action(
+                actor=payment.booking.user,
+                action="booking_confirmed",
+                metadata={"booking_id": str(payment.booking.id), "service_type": "flight"},
+            )
+
+        if verification.get("status") != "success":
+            return mark_verification_failed("Payment verification failed", verification)
 
         verification_data = verification.get("data", {})
         if verification_data.get("status") != "successful":
-            payment.status = "failed"
-            payment.raw_response = {
-                "meta": (payment.raw_response or {}).get("meta", {}),
-                "verification": verification,
-            }
-            payment.save()
-            BookingEngine.update_status(payment.booking, "failed")
-            return Response({"error": "Payment not successful"}, status=status.HTTP_400_BAD_REQUEST)
+            return mark_verification_failed("Payment not successful", verification)
 
         try:
             verified_amount = Decimal(str(verification_data.get("amount")))
-        except Exception:
+        except (InvalidOperation, TypeError, ValueError):
             verified_amount = None
 
         if verified_amount is None or verified_amount != payment.amount:
-            payment.status = "failed"
-            payment.raw_response = {
-                "meta": (payment.raw_response or {}).get("meta", {}),
-                "verification": verification,
-            }
-            payment.save()
-            BookingEngine.update_status(payment.booking, "failed")
-            return Response({"error": "Payment amount mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+            return mark_verification_failed("Payment amount mismatch", verification)
 
         if verification_data.get("currency") != payment.currency:
-            payment.status = "failed"
-            payment.raw_response = {
-                "meta": (payment.raw_response or {}).get("meta", {}),
-                "verification": verification,
-            }
-            payment.save()
-            BookingEngine.update_status(payment.booking, "failed")
-            return Response({"error": "Payment currency mismatch"}, status=status.HTTP_400_BAD_REQUEST)
-
-        payment.status = "succeeded"
-        payment.flutterwave_charge_id = str(verification_data.get("id"))
-        payment.paid_at = timezone.now()
-        meta = (payment.raw_response or {}).get("meta", {})
-        payment.raw_response = {
-            "meta": meta,
-            "verification": verification,
-        }
-        payment.save()
-
-        BookingEngine.attach_payment(
-            payment.booking,
-            "confirmed",
-            payment_reference=str(verification_data.get("id")),
-        )
+            return mark_verification_failed("Payment currency mismatch", verification)
 
         if FlightBooking.objects.filter(booking=payment.booking).exists():
+            finalize_successful_payment(meta)
             return Response(
                 {"message": "Flight booked successfully", "booking_id": payment.booking.id},
                 status=status.HTTP_200_OK,
@@ -477,15 +515,21 @@ class VerifyFlightPaymentView(APIView):
         flight_offer = request.data.get("flight_offer") or meta.get("flight_offer")
         travelers = request.data.get("travelers") or meta.get("travelers")
         if not flight_offer or not travelers:
-            return Response(
-                {"error": "flight_offer and travelers are required to create the flight order"},
-                status=status.HTTP_400_BAD_REQUEST,
+            return mark_booking_failed(
+                "flight_offer and travelers are required to create the flight order"
             )
 
-        flight_order = AmadeusService.create_flight_order(
-            flight_offer,
-            travelers,
-        )
+        try:
+            flight_order = AmadeusService.create_flight_order(
+                flight_offer,
+                travelers,
+            )
+        except Exception as exc:
+            return mark_booking_failed(
+                "Airline booking failed",
+                details=str(exc),
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         if flight_order.get("id"):
             payment.booking.external_service_id = flight_order["id"]
@@ -505,9 +549,8 @@ class VerifyFlightPaymentView(APIView):
         return_date = get_detail("return_date")
 
         if not departure_city or not arrival_city or not departure_date or not airline:
-            return Response(
-                {"error": "departure_city, arrival_city, departure_date, and airline are required"},
-                status=status.HTTP_400_BAD_REQUEST,
+            return mark_booking_failed(
+                "departure_city, arrival_city, departure_date, and airline are required"
             )
 
         FlightBooking.objects.create(
@@ -519,6 +562,20 @@ class VerifyFlightPaymentView(APIView):
             airline=airline,
             passengers=int(passengers) if passengers is not None else 1,
         )
+
+        updated_meta = {
+            **meta,
+            "flight_offer": flight_offer,
+            "travelers": travelers,
+            "departure_city": departure_city,
+            "arrival_city": arrival_city,
+            "departure_date": departure_date,
+            "return_date": return_date,
+            "airline": airline,
+            "passengers": passengers,
+        }
+
+        finalize_successful_payment(updated_meta)
 
         return Response(
             {"message": "Flight booked successfully", "booking_id": payment.booking.id},

@@ -71,7 +71,7 @@ class BaseVisaTestCase(TestCase):
             passengers=1,
         )
 
-    def create_payment(self, booking=None, status="successful"):
+    def create_payment(self, booking=None, status="succeeded"):
         booking = booking or self.create_booking(service_type="flight")
         return Payment.objects.create(
             booking=booking,
@@ -374,7 +374,7 @@ class VisaApplicationFlightTests(BaseVisaTestCase):
 
     def test_create_with_flight_destination_mismatch(self):
         flight = self.create_flight_booking(user=self.user, arrival_city="Italy")
-        self.create_payment(booking=flight.booking, status="successful")
+        self.create_payment(booking=flight.booking, status="succeeded")
         self.client.force_authenticate(self.user)
         response = self.client.post(
             VISAS_URL,
@@ -410,7 +410,7 @@ class VisaApplicationFlightTests(BaseVisaTestCase):
 
     def test_create_with_flight_existing_visa_rejected(self):
         flight = self.create_flight_booking(user=self.user, arrival_city="France")
-        self.create_payment(booking=flight.booking, status="successful")
+        self.create_payment(booking=flight.booking, status="succeeded")
         self.create_visa(user=self.user, flight=flight)
         self.client.force_authenticate(self.user)
         response = self.client.post(
@@ -430,7 +430,7 @@ class VisaApplicationFlightTests(BaseVisaTestCase):
 
     def test_create_with_flight_paid_and_matched_creates_visa(self):
         flight = self.create_flight_booking(user=self.user, arrival_city="France")
-        self.create_payment(booking=flight.booking, status="successful")
+        self.create_payment(booking=flight.booking, status="succeeded")
         self.client.force_authenticate(self.user)
         response = self.client.post(
             VISAS_URL,
@@ -450,7 +450,7 @@ class VisaApplicationFlightTests(BaseVisaTestCase):
 
     def test_create_with_flight_sets_booking_external_service_id(self):
         flight = self.create_flight_booking(user=self.user, arrival_city="France")
-        self.create_payment(booking=flight.booking, status="successful")
+        self.create_payment(booking=flight.booking, status="succeeded")
         self.client.force_authenticate(self.user)
         response = self.client.post(
             VISAS_URL,
@@ -709,7 +709,7 @@ class VisaExtraTests(BaseVisaTestCase):
     # -------------------------
     def test_create_with_flight_departure_after_appointment(self):
         flight = self.create_flight_booking(user=self.user, arrival_city="France")
-        self.create_payment(booking=flight.booking, status="successful")
+        self.create_payment(booking=flight.booking, status="succeeded")
         self.client.force_authenticate(self.user)
         payload = {
             "flight_id": flight.id,
@@ -737,7 +737,7 @@ class VisaExtraTests(BaseVisaTestCase):
 
     def test_create_with_multiple_visas_on_same_flight(self):
         flight = self.create_flight_booking(user=self.user, arrival_city="France")
-        self.create_payment(booking=flight.booking, status="successful")
+        self.create_payment(booking=flight.booking, status="succeeded")
         self.create_visa(user=self.user, flight=flight)
         self.client.force_authenticate(self.user)
         payload = {
@@ -1123,7 +1123,7 @@ class VisaProductionSafetyTests(BaseVisaTestCase):
 
     def test_two_parallel_visa_creations_for_same_flight(self):
         flight = self.create_flight_booking(user=self.user, arrival_city="France")
-        self.create_payment(booking=flight.booking, status="successful")
+        self.create_payment(booking=flight.booking, status="succeeded")
 
         self.client.force_authenticate(self.user)
 
@@ -1150,8 +1150,8 @@ class VisaProductionSafetyTests(BaseVisaTestCase):
     def test_multiple_successful_payments_do_not_break_visa_creation(self):
         flight = self.create_flight_booking(user=self.user, arrival_city="France")
 
-        self.create_payment(booking=flight.booking, status="successful")
-        self.create_payment(booking=flight.booking, status="successful")
+        self.create_payment(booking=flight.booking, status="succeeded")
+        self.create_payment(booking=flight.booking, status="succeeded")
 
         self.client.force_authenticate(self.user)
 

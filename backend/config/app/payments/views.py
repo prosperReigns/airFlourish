@@ -11,6 +11,7 @@ from django.db import transaction
 from django.conf import settings
 from django.http import HttpResponse
 from app.services.booking_engine import BookingEngine
+from app.services.reference_generator import generate_booking_reference
 from app.payments.tasks import process_successful_payment
 from app.transactions.services import get_or_create_transaction, mark_transaction_failed
 from drf_yasg.utils import swagger_auto_schema
@@ -291,6 +292,9 @@ class CardPaymentInitView(APIView):
                 {"error": "Idempotency-Key header required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if not tx_ref:
+            tx_ref = generate_booking_reference("pay")
 
         # Prevent duplicate request
         existing = Payment.objects.filter(idempotency_key=idempotency_key).first()
