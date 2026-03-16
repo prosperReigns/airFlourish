@@ -10,7 +10,7 @@ from .models import Transaction
 from .serializers import TransactionSerializer
 from app.transactions.tasks import process_payment
 from django.utils.crypto import get_random_string
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 @method_decorator(
     name="get",
@@ -72,7 +72,11 @@ class InitiatePaymentView(APIView):
         },
     )
     def post(self, request):
-        amount = Decimal(request.data.get("amount"))
+        amount_value = request.data.get("amount")
+        try:
+            amount = Decimal(str(amount_value))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({"error": "Invalid amount"}, status=400)
         currency = request.data.get("currency", "NGN")
         transaction_type = request.data.get("transaction_type", "flight")
         reference = get_random_string(12).upper()

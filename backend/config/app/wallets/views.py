@@ -20,7 +20,7 @@ class WalletDetailView(generics.RetrieveAPIView):
 
     def get_object(self):
         if getattr(self, "swagger_fake_view", False):
-            return Wallet()
+            return Wallet(balance=0, currency="USD")
         return Wallet.objects.get(user=self.request.user)
 
 
