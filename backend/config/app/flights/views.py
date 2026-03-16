@@ -1,5 +1,3 @@
-from decimal import Decimal, InvalidOperation
-
 from django.db import transaction
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -11,6 +9,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
 from app.payments.models import Payment
+from app.payments.services import PaymentVerificationService, merge_payment_metadata
 from app.services.amadeus import AmadeusService
 from app.services.booking_engine import BookingEngine
 from app.services.flutterwave import FlutterwaveService
@@ -413,11 +412,12 @@ class VerifyFlightPaymentView(APIView):
 
         def mark_verification_failed(message, details, status_code=status.HTTP_400_BAD_REQUEST):
             payment.status = "failed"
-            payment.raw_response = {
-                "meta": meta,
-                "verification": details,
-            }
-            payment.save()
+            payment.raw_response = merge_payment_metadata(
+                payment,
+                meta_update=meta,
+                verification_payload=details,
+            )
+            payment.save(update_fields=["status", "raw_response"])
             BookingEngine.update_status(payment.booking, "failed")
             transaction_obj = get_or_create_transaction(
                 booking=payment.booking,
@@ -430,12 +430,10 @@ class VerifyFlightPaymentView(APIView):
 
         def mark_booking_failed(message, details=None, status_code=status.HTTP_400_BAD_REQUEST):
             payment.status = "booking_failed"
-            payment.raw_response = {
-                "meta": meta,
-                "verification": verification,
-                "booking_error": details,
-            }
-            payment.save()
+            raw_response = dict(payment.raw_response or {})
+            raw_response["booking_error"] = details
+            payment.raw_response = raw_response
+            payment.save(update_fields=["status", "raw_response"])
             BookingEngine.update_status(payment.booking, "failed")
             transaction_obj = get_or_create_transaction(
                 booking=payment.booking,
@@ -454,19 +452,19 @@ class VerifyFlightPaymentView(APIView):
                 payload["details"] = details
             return Response(payload, status=status_code)
 
-        def finalize_successful_payment(updated_meta):
+        def finalize_successful_payment(updated_meta, payment_reference):
             payment.status = "succeeded"
-            payment.flutterwave_charge_id = str(verification_data.get("id"))
-            payment.paid_at = timezone.now()
-            payment.raw_response = {
-                "meta": updated_meta,
-                "verification": verification,
-            }
-            payment.save()
+            if payment.paid_at is None:
+                payment.paid_at = timezone.now()
+            payment.raw_response = merge_payment_metadata(
+                payment,
+                meta_update=updated_meta,
+            )
+            payment.save(update_fields=["status", "paid_at", "raw_response"])
             BookingEngine.attach_payment(
                 payment.booking,
                 "confirmed",
-                payment_reference=str(verification_data.get("id")),
+                payment_reference=payment_reference,
             )
             transaction_obj = get_or_create_transaction(
                 booking=payment.booking,
@@ -487,26 +485,26 @@ class VerifyFlightPaymentView(APIView):
                 metadata={"booking_id": str(payment.booking.id), "service_type": "flight"},
             )
 
-        if verification.get("status") != "success":
+        verification_result = PaymentVerificationService.apply_verification(
+            payment,
+            verification_response=verification,
+            source="api",
+            mark_failed_on_gateway_error=True,
+        )
+        if not verification_result.is_successful:
             return mark_verification_failed("Payment verification failed", verification)
-
-        verification_data = verification.get("data", {})
-        if verification_data.get("status") != "successful":
-            return mark_verification_failed("Payment not successful", verification)
-
-        try:
-            verified_amount = Decimal(str(verification_data.get("amount")))
-        except (InvalidOperation, TypeError, ValueError):
-            verified_amount = None
-
-        if verified_amount is None or verified_amount != payment.amount:
-            return mark_verification_failed("Payment amount mismatch", verification)
-
-        if verification_data.get("currency") != payment.currency:
-            return mark_verification_failed("Payment currency mismatch", verification)
+        payment.refresh_from_db(fields=["flutterwave_charge_id"])
+        payment_reference = payment.flutterwave_charge_id
+        if not payment_reference:
+            verification_data = verification_result.normalized_verification.get("data", {})
+            if isinstance(verification_data, dict):
+                payment_reference = verification_data.get("id")
+            if payment_reference:
+                payment.flutterwave_charge_id = str(payment_reference)
+                payment.save(update_fields=["flutterwave_charge_id"])
 
         if FlightBooking.objects.filter(booking=payment.booking).exists():
-            finalize_successful_payment(meta)
+            finalize_successful_payment(meta, payment_reference)
             return Response(
                 {"message": "Flight booked successfully", "booking_id": payment.booking.id},
                 status=status.HTTP_200_OK,
@@ -575,7 +573,7 @@ class VerifyFlightPaymentView(APIView):
             "passengers": passengers,
         }
 
-        finalize_successful_payment(updated_meta)
+        finalize_successful_payment(updated_meta, payment_reference)
 
         return Response(
             {"message": "Flight booked successfully", "booking_id": payment.booking.id},

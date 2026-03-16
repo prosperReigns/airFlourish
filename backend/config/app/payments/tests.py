@@ -13,6 +13,7 @@ from rest_framework.test import APIClient
 
 from app.bookings.models import Booking
 from app.payments.models import Payment
+from app.payments.services import PaymentVerificationService
 from app.payments.serializers import PaymentSerializer
 from app.services.booking_engine import BookingEngine
 from app.transactions.models import Transaction
@@ -635,6 +636,31 @@ class PaymentVerificationTests(BasePaymentTestCase):
         payment.refresh_from_db()
         self.assertEqual(payment.status, "failed")
         mock_update.assert_called_once_with(payment.booking, "failed")
+
+
+class PaymentVerificationServiceTests(BasePaymentTestCase):
+    def test_webhook_verification_merges_payload(self):
+        payment = self.create_payment(tx_ref="tx-service-001")
+        payload = {
+            "id": 321,
+            "txRef": payment.tx_ref,
+            "amount": "100.00",
+            "currency": "NGN",
+            "status": "successful",
+        }
+
+        result = PaymentVerificationService.apply_verification(
+            payment,
+            verification_response=payload,
+            source="webhook",
+            mark_failed_on_gateway_error=True,
+        )
+
+        self.assertTrue(result.is_successful)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, "succeeded")
+        self.assertIn("verification", payment.raw_response)
+        self.assertEqual(payment.raw_response["flutterwave"]["status"], "successful")
 
 
 class PaymentRedirectTests(BasePaymentTestCase):

@@ -1,3 +1,5 @@
+import hmac
+
 from django.utils.decorators import method_decorator
 from rest_framework import viewsets, permissions, status
 from .models import Payment
@@ -6,23 +8,25 @@ from app.services.flutterwave import FlutterwaveService
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
 from django.http import HttpResponse
 from app.services.booking_engine import BookingEngine
 from app.services.reference_generator import generate_booking_reference
 from app.payments.tasks import process_successful_payment
+from app.payments.services import PaymentVerificationService
 from app.transactions.services import get_or_create_transaction, mark_transaction_failed
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
 
-def _merge_payment_metadata(payment, payload):
-    raw_response = dict(payment.raw_response or {})
-    raw_response.setdefault("meta", {})
-    raw_response["flutterwave"] = payload
-    return raw_response
+def _signature_to_bytes(value):
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, str):
+        return value.encode()
+    return None
+
 
 # --- ViewSet for Admin/User Payment access ---
 @method_decorator(
@@ -174,14 +178,26 @@ class FlutterwaveWebhookView(APIView):
         """
 
         signature = request.headers.get("verif-hash")
-        if signature != settings.FLUTTERWAVE_SECRET_HASH:
+        expected_signature = settings.FLUTTERWAVE_SECRET_HASH
+        if not expected_signature:
+            return Response(
+                {"error": "Payment verification unavailable due to configuration error"},
+                status=503,
+            )
+        signature_bytes = _signature_to_bytes(signature)
+        expected_signature_bytes = _signature_to_bytes(expected_signature)
+        if not signature_bytes:
+            return Response({"error": "Missing signature"}, status=400)
+        if not expected_signature_bytes:
+            return Response(
+                {"error": "Payment verification unavailable due to configuration error"},
+                status=503,
+            )
+        if not hmac.compare_digest(signature_bytes, expected_signature_bytes):
             return Response({"error": "Invalid signature"}, status=400)
 
         data = request.data
         tx_ref = data.get("txRef")
-        payment_status = data.get("status")
-        charge_id = data.get("id")
-
         if not tx_ref:
             return Response({"error": "txRef missing"}, status=400)
 
@@ -194,14 +210,13 @@ class FlutterwaveWebhookView(APIView):
         if payment.status == "succeeded":
             return Response({"message": "Already processed"}, status=200)
 
-        if payment_status == "successful":
-
-            payment.status = "succeeded"
-            payment.flutterwave_charge_id = str(charge_id)
-            payment.raw_response = _merge_payment_metadata(payment, data)
-            payment.paid_at = timezone.now()
-            payment.save()
-
+        verification_result = PaymentVerificationService.apply_verification(
+            payment,
+            verification_response=data,
+            source="webhook",
+            mark_failed_on_gateway_error=True,
+        )
+        if verification_result.is_successful:
             BookingEngine.attach_payment(payment.booking, 'confirmed')
 
             transaction.on_commit(
@@ -209,10 +224,6 @@ class FlutterwaveWebhookView(APIView):
             )
 
             return Response({"message": "Payment processed"}, status=200)
-
-        payment.status = "failed"
-        payment.raw_response = _merge_payment_metadata(payment, data)
-        payment.save()
 
         BookingEngine.update_status(payment.booking, 'failed')
 
@@ -587,28 +598,24 @@ class PaymentVerificationView(APIView):
 
         # Call Flutterwave verify API
         verification_response = FlutterwaveService().verify_payment(tx_ref)
+        verification_result = PaymentVerificationService.apply_verification(
+            payment,
+            verification_response=verification_response,
+            source="api",
+            mark_failed_on_gateway_error=False,
+        )
 
-        if verification_response.get("status") != "success":
-            return Response({
-                "error": "Verification failed",
-                "gateway_response": verification_response
-            }, status=400)
+        if verification_result.gateway_error:
+            return Response(
+                {
+                    "error": "Verification failed",
+                    "gateway_response": verification_response,
+                },
+                status=400,
+            )
 
-        data = verification_response.get("data", {})
-
-        # Validate payment integrity
-        if (
-            data.get("status") == "successful" and
-            float(data.get("amount")) == float(payment.amount) and
-            data.get("currency") == payment.currency
-        ):
-
-            payment.status = "succeeded"
-            payment.flutterwave_charge_id = str(data.get("id"))
-            payment.raw_response = _merge_payment_metadata(payment, verification_response)
-            payment.paid_at = timezone.now()
-            payment.save()
-
+        if verification_result.is_successful:
+            payment.refresh_from_db(fields=["status", "paid_at"])
             BookingEngine.attach_payment(payment.booking, "confirmed")
 
             transaction.on_commit(
@@ -619,10 +626,6 @@ class PaymentVerificationView(APIView):
                 "message": "Payment verified successfully",
                 "payment": PaymentSerializer(payment).data
             })
-
-        payment.status = "failed"
-        payment.raw_response = _merge_payment_metadata(payment, verification_response)
-        payment.save()
 
         BookingEngine.update_status(payment.booking, "failed")
 
