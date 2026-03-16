@@ -175,14 +175,22 @@ class FlutterwaveWebhookView(APIView):
                 {"error": "Payment verification unavailable due to configuration error"},
                 status=503,
             )
-        if not signature:
+        def _signature_to_bytes(value):
+            if isinstance(value, bytes):
+                return value
+            if isinstance(value, str):
+                return value.encode()
+            return None
+
+        signature_bytes = _signature_to_bytes(signature)
+        expected_signature_bytes = _signature_to_bytes(expected_signature)
+        if not signature_bytes:
             return Response({"error": "Invalid signature"}, status=400)
-        signature_bytes = signature.encode() if isinstance(signature, str) else signature
-        expected_signature_bytes = (
-            expected_signature.encode()
-            if isinstance(expected_signature, str)
-            else expected_signature
-        )
+        if not expected_signature_bytes:
+            return Response(
+                {"error": "Payment verification unavailable due to configuration error"},
+                status=503,
+            )
         if not hmac.compare_digest(signature_bytes, expected_signature_bytes):
             return Response({"error": "Invalid signature"}, status=400)
 
