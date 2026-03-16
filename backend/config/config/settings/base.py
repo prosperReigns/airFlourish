@@ -10,10 +10,11 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-default-key")
+SECRET_KEY = os.environ.get("SECRET_KEY", 'django-insecure-6ophipqh)6ub6p+$&e713pv*ja79)3_%%6)=+w&n*kul$nf2d*')
 
 # Application definition
 INSTALLED_APPS = [
+    'django_prometheus',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -29,6 +30,18 @@ INSTALLED_APPS = [
     "app.visas",
     "app.payments",
     "app.transport",
+    "app.notifications",
+    "app.transactions",
+    "app.wallets",
+    "app.core",
+    "app.inventory",
+    "app.pricing",
+    "app.maintenance",
+    "app.events",
+    "app.api_keys",
+    "app.security",
+    "app.search_security",
+    "app.audit",
     'rest_framework_simplejwt.token_blacklist',
     'drf_yasg',
 ]
@@ -43,6 +56,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'app.core.middleware.IdempotencyMiddleware',
+    'django_prometheus.middleware.PrometheusBeforeMiddleware',
+    'django_prometheus.middleware.PrometheusAfterMiddleware',
+    "app.api_keys.middleware.APIKeyMiddleware",
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -154,4 +171,45 @@ BOOKING_RAPIDAPI_HOST = os.getenv("BOOKING_RAPIDAPI_HOST")
 CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
 CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
+CELERY_TIMEZONE = "Africa/Lagos"
+
+RECAPTCHA_SECRET_KEY = ""
+
+LOGGING = {
+
+    "version": 1,
+
+    "disable_existing_loggers": False,
+
+    "formatters": {
+
+        "standard": {
+
+            "format": "[%(levelname)s] %(asctime)s %(name)s: %(message)s",
+
+        }
+
+    },
+
+    "handlers": {
+
+        "console": {
+
+            "class": "logging.StreamHandler",
+
+            "formatter": "standard",
+
+        }
+
+    },
+
+    "root": {
+
+        "handlers": ["console"],
+
+        "level": "INFO",
+
+    },
+}

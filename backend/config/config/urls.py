@@ -73,6 +73,9 @@ urlpatterns = [
     path('api/hotels/', include('app.hotels.urls')),
     path('api/transport/', include('app.transport.urls')),
     path('api/payments/', include('app.payments.urls')),
+    path("api/transactions", include("app.transactions.urls")),
+    path("api/", include("app.wallets.urls")),
+    path("api/notifications", include("app.notifications.urls")),
     #jwt
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

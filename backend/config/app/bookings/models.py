@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+import uuid
 
 class Booking(models.Model):
 
@@ -31,3 +32,27 @@ class Booking(models.Model):
 
     def __str__(self):
         return f"{self.reference_code} - {self.service_type}"
+
+class BookingLock(models.Model):
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    resource_type = models.CharField(
+        max_length=50
+    )
+
+    resource_id = models.CharField(
+        max_length=255
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE
+    )
+
+    expires_at = models.DateTimeField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("resource_type", "resource_id")
