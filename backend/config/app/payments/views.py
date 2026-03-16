@@ -18,8 +18,10 @@ from drf_yasg import openapi
 
 
 def _merge_payment_metadata(payment, payload):
-    existing_meta = (payment.raw_response or {}).get("meta", {})
-    payment.raw_response = {"meta": existing_meta, "flutterwave": payload}
+    raw_response = dict(payment.raw_response or {})
+    raw_response.setdefault("meta", {})
+    raw_response["flutterwave"] = payload
+    payment.raw_response = raw_response
 
 # --- ViewSet for Admin/User Payment access ---
 @method_decorator(

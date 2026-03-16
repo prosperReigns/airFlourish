@@ -26,16 +26,17 @@ def _confirm_transport_booking(booking):
     if not service:
         return
 
-    if not TransportReservation.objects.filter(booking=booking).exists():
-        passengers_count = service.passengers or 1
-        TransportReservation.objects.create(
-            service=service,
-            booking=booking,
-            reserved_by=booking.user,
-            passengers_count=passengers_count,
-            special_requests=service.special_requests or "",
-            status="confirmed",
-        )
+    passengers_count = service.passengers or 1
+    TransportReservation.objects.get_or_create(
+        service=service,
+        booking=booking,
+        defaults={
+            "reserved_by": booking.user,
+            "passengers_count": passengers_count,
+            "special_requests": service.special_requests or "",
+            "status": "confirmed",
+        },
+    )
 
 
 def _confirm_visa_booking(booking):
