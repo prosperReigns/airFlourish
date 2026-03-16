@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
+from typing import Optional
 
 from app.payments.utils import sanitize_flutterwave_payload
 
@@ -16,7 +17,7 @@ class PaymentVerificationResult:
     normalized_verification: dict
     is_successful: bool
     gateway_error: bool
-    failure_reason: str | None
+    failure_reason: Optional[str]
 
 
 def merge_payment_metadata(
