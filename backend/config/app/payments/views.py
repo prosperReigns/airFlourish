@@ -170,6 +170,10 @@ class FlutterwaveWebhookView(APIView):
 
         signature = request.headers.get("verif-hash")
         expected_signature = settings.FLUTTERWAVE_SECRET_HASH
+        if isinstance(signature, bytes):
+            signature = signature.decode()
+        if isinstance(expected_signature, bytes):
+            expected_signature = expected_signature.decode()
         if not expected_signature:
             return Response({"error": "Service temporarily unavailable"}, status=503)
         if not signature or not hmac.compare_digest(signature, expected_signature):
