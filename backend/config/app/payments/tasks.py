@@ -46,6 +46,7 @@ def _confirm_visa_booking(booking):
 
 @shared_task(bind=True, max_retries=3)
 def process_successful_payment(self, payment_id):
+    payment = None
     try:
         payment = Payment.objects.select_related("booking", "booking__user").get(id=payment_id)
         booking = payment.booking
@@ -93,7 +94,7 @@ def process_successful_payment(self, payment_id):
     except Payment.DoesNotExist:
         return f"Payment {payment_id} does not exist"
     except Exception as exc:
-        if "payment" in locals():
+        if payment is not None:
             booking = payment.booking
             payment.status = "booking_failed"
             payment.save(update_fields=["status"])
