@@ -12,13 +12,14 @@ def credit_wallet(wallet: Wallet, amount: Decimal, description: str, transaction
         locked_wallet.balance = F("balance") + amount
         locked_wallet.save(update_fields=["balance"])
         locked_wallet.refresh_from_db(fields=["balance"])
+        updated_balance = locked_wallet.balance
 
         LedgerEntry.objects.create(
             wallet=locked_wallet,
             transaction=transaction_obj,
             entry_type="credit",
             amount=amount,
-            balance_after=locked_wallet.balance,
+            balance_after=updated_balance,
             description=description
         )
 
@@ -39,13 +40,14 @@ def debit_wallet(wallet: Wallet, amount: Decimal, description: str, transaction_
         locked_wallet.balance = F("balance") - amount
         locked_wallet.save(update_fields=["balance"])
         locked_wallet.refresh_from_db(fields=["balance"])
+        updated_balance = locked_wallet.balance
 
         LedgerEntry.objects.create(
             wallet=locked_wallet,
             transaction=transaction_obj,
             entry_type="debit",
             amount=amount,
-            balance_after=locked_wallet.balance,
+            balance_after=updated_balance,
             description=description
         )
 

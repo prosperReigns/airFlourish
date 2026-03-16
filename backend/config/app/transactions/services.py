@@ -43,13 +43,13 @@ def get_or_create_transaction(*, booking, reference: str, amount=None, currency=
 
 def mark_transaction_success(transaction, provider_response=None):
     with db_transaction.atomic():
-        transaction_ref = transaction
+        transaction_input = transaction
         locked_transaction = Transaction.objects.select_for_update().get(
-            pk=transaction_ref.pk
+            pk=transaction_input.pk
         )
         if locked_transaction.status == "successful":
-            transaction_ref.refresh_from_db()
-            return transaction_ref
+            transaction_input.refresh_from_db()
+            return transaction_input
 
         locked_transaction.status = "successful"
         if provider_response is not None:
@@ -86,19 +86,19 @@ def mark_transaction_success(transaction, provider_response=None):
             metadata={"transaction_id": str(locked_transaction.id)},
         )
 
-        transaction_ref.refresh_from_db()
-    return transaction_ref
+        transaction_input.refresh_from_db()
+    return transaction_input
 
 
 def mark_transaction_failed(transaction, provider_response=None):
     with db_transaction.atomic():
-        transaction_ref = transaction
+        transaction_input = transaction
         locked_transaction = Transaction.objects.select_for_update().get(
-            pk=transaction_ref.pk
+            pk=transaction_input.pk
         )
         if locked_transaction.status == "failed":
-            transaction_ref.refresh_from_db()
-            return transaction_ref
+            transaction_input.refresh_from_db()
+            return transaction_input
 
         locked_transaction.status = "failed"
         if provider_response is not None:
@@ -124,5 +124,5 @@ def mark_transaction_failed(transaction, provider_response=None):
             metadata={"transaction_id": str(locked_transaction.id)},
         )
 
-        transaction_ref.refresh_from_db()
-    return transaction_ref
+        transaction_input.refresh_from_db()
+    return transaction_input
