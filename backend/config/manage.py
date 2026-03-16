@@ -4,6 +4,8 @@ import os
 import sys
 from dotenv import load_dotenv
 
+load_dotenv()
+
 env_file = os.path.join(os.path.dirname(__file__), '.env.dev')
 if os.path.exists(env_file):
     load_dotenv(env_file)
@@ -25,4 +27,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
