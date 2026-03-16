@@ -1,4 +1,5 @@
 import hmac
+import logging
 from decimal import Decimal, InvalidOperation
 
 from django.utils.decorators import method_decorator
@@ -20,6 +21,8 @@ from app.payments.utils import sanitize_flutterwave_payload
 from app.transactions.services import get_or_create_transaction, mark_transaction_failed
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
+logger = logging.getLogger(__name__)
 
 
 def _merge_payment_metadata(payment, payload):
@@ -180,7 +183,7 @@ class FlutterwaveWebhookView(APIView):
         signature = request.headers.get("verif-hash")
         expected_signature = settings.FLUTTERWAVE_SECRET_HASH
         if not expected_signature:
-            return Response({"error": "Webhook secret not configured"}, status=500)
+            return Response({"error": "Webhook secret not configured"}, status=503)
         if not signature or not hmac.compare_digest(signature, expected_signature):
             return Response({"error": "Invalid signature"}, status=400)
 
@@ -605,6 +608,7 @@ class PaymentVerificationView(APIView):
         try:
             verified_amount = Decimal(str(data.get("amount")))
         except (InvalidOperation, TypeError):
+            logger.warning("Payment verification amount parse failed for tx_ref=%s", tx_ref)
             verified_amount = None
 
         # Validate payment integrity
