@@ -411,8 +411,7 @@ class VerifyFlightPaymentView(APIView):
         meta = (payment.raw_response or {}).get("meta", {})
 
         def mark_verification_failed(message, details, status_code=status.HTTP_400_BAD_REQUEST):
-            if payment.status != "failed":
-                payment.status = "failed"
+            payment.status = "failed"
             payment.raw_response = merge_payment_metadata(
                 payment,
                 meta_update=meta,
@@ -462,6 +461,7 @@ class VerifyFlightPaymentView(APIView):
                 meta_update=updated_meta,
             )
             payment.save(update_fields=["status", "paid_at", "raw_response"])
+            payment.refresh_from_db(fields=["flutterwave_charge_id"])
             payment_reference = payment.flutterwave_charge_id
             BookingEngine.attach_payment(
                 payment.booking,

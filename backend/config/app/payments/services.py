@@ -50,9 +50,8 @@ def parse_verification_amount(amount, tx_ref=None):
         return Decimal(str(amount))
     except (InvalidOperation, TypeError, ValueError):
         if tx_ref:
-            escaped_tx_ref = str(tx_ref).replace("\n", "\\n").replace("\r", "\\r")
             logger.warning(
-                "Payment verification amount parse failed for tx_ref=%s", escaped_tx_ref
+                "Payment verification amount parse failed for tx_ref=%s", tx_ref
             )
         return None
 
