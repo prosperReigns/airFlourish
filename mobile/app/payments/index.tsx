@@ -29,12 +29,19 @@ export default function PaymentScreen() {
     // Generate a unique tx_ref
     const txRef = `PAY-${booking.reference_code}-${Date.now()}`;
     const currency = booking.currency ?? "NGN";
+    const amount = booking.total_price;
+
+    if (amount === null || amount === undefined) {
+      Alert.alert("Payment Error", "Missing booking amount.");
+      setLoading(false);
+      return;
+    }
 
     try {
       // Initialize payment on backend (Flutterwave)
       const res = await initiateCardPayment({
         bookingId: booking.id,
-        amount: booking.total_price,
+        amount,
         currency,
         txRef,
         idempotencyKey: createIdempotencyKey(),

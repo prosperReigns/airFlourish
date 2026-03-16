@@ -51,7 +51,7 @@ export default function LoginScreen() {
           {loading ? (
             <ActivityIndicator color="white" />
           ) : (
-            <Text className="text-white text-center font-semibold w-full bg-red-500 text-lg rounded">
+            <Text className="text-white text-center font-semibold w-full text-lg rounded">
               Login
             </Text>
           )}
