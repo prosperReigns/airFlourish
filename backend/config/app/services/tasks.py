@@ -1,48 +1,73 @@
+import logging
+
 from celery import shared_task
+
+from app.flights.models import FlightBooking
+from app.payments.models import Payment
 from app.services.amadeus import AmadeusService
 from app.services.booking_engine import BookingEngine
-from app.payments.models import Payment
 from app.services.flutterwave import FlutterwaveService
+
+logger = logging.getLogger(__name__)
+
+
+def process_flight_booking_logic(payment):
+    booking = payment.booking
+    meta = (payment.raw_response or {}).get("meta", {})
+    flight_offer = meta.get("flight_offer")
+    travelers = meta.get("travelers")
+
+    if not flight_offer or not travelers:
+        raise ValueError(
+            f"Payment {payment.id} missing flight_offer or travelers in metadata"
+        )
+
+    # Call Amadeus
+    flight_order = AmadeusService.create_flight_order(
+        flight_offer,
+        travelers,
+    )
+
+    booking.external_service_id = flight_order.get("id")
+    booking.save(update_fields=["external_service_id"])
+
+    BookingEngine.update_status(booking, "confirmed")
+
+    FlightBooking.objects.get_or_create(
+        booking=booking,
+        defaults={
+            "departure_city": meta.get("departure_city", ""),
+            "arrival_city": meta.get("arrival_city", ""),
+            "departure_date": meta.get("departure_date"),
+            "return_date": meta.get("return_date"),
+            "airline": meta.get("airline", ""),
+            "passengers": meta.get("passengers", 1),
+        },
+    )
 
 @shared_task(bind=True, max_retries=3)
 def process_flight_booking(self, payment_id):
     try:
-        payment = Payment.objects.get(id=payment_id)
+        payment = Payment.objects.select_related("booking").get(id=payment_id)
 
-        if payment.status != "successful":
+        if payment.status != "succeeded":
             return "Payment not successful"
 
-        meta = payment.raw_response.get("meta", {})
-        flight_offer = meta.get("flight_offer")
-        travelers = meta.get("travelers")
-
-        # Call Amadeus
-        flight_order = AmadeusService.create_flight_order(
-            flight_offer,
-            travelers
-        )
-
-        # Create unified booking
-        booking = BookingEngine.create_booking(
-            user=payment.booking.user,
-            service_type="flight",
-            total_price=payment.amount,
-            currency=payment.booking.currency,
-            external_service_id=flight_order["id"]
-        )
-
-        payment.booking = booking
-        payment.status = "booking_created"
-        payment.save()
-
-        BookingEngine.update_status(booking, "confirmed")
+        process_flight_booking_logic(payment)
 
         return "Flight booked successfully"
 
     except Exception as e:
         # Refund on failure
-        FlutterwaveService().refund_payment(payment.transaction_id)
-        payment.status = "refunded"
-        payment.save()
+        if payment.flutterwave_charge_id:
+            try:
+                FlutterwaveService().refund_payment(payment.flutterwave_charge_id)
+            except Exception:
+                logger.exception(
+                    "Failed to refund Flutterwave charge %s",
+                    payment.flutterwave_charge_id,
+                )
+        payment.status = "booking_failed"
+        payment.save(update_fields=["status"])
 
         raise self.retry(exc=e, countdown=60)

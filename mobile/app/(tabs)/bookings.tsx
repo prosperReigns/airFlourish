@@ -1,15 +1,6 @@
-import { api } from "@/services/api";
+import { Booking, listBookings } from "@/services/booking";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Text, View } from "react-native";
-
-type Booking = {
-  id: number;
-  service_type: string;
-  reference_code: string;
-  total_price: string;
-  currency: string;
-  status: string;
-};
 
 export default function BookingsScreen() {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -18,9 +9,9 @@ export default function BookingsScreen() {
 
   const fetchBookings = async () => {
     try {
-      const response = await api.get("/bookings/");
-      setBookings(response.data);
-    } catch (err: any) {
+      const data = await listBookings();
+      setBookings(data);
+    } catch {
       setError("Failed to load bookings");
     } finally {
       setLoading(false);
@@ -72,7 +63,7 @@ export default function BookingsScreen() {
               </Text>
 
               <Text className="text-gray-800 mt-2 font-semibold">
-                {item.currency} {item.total_price}
+                {item.currency ?? "NGN"} {item.total_price ?? "0.00"}
               </Text>
 
               <View className="mt-2">

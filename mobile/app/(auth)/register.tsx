@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useState } from "react";
 import { useRouter } from "expo-router";
 import Input from "@/components/ui/Input";
-import API from "@/services/api";
+import { register } from "@/services/auth";
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -17,7 +17,7 @@ export default function RegisterScreen() {
     try {
       setLoading(true);
 
-      await API.post("users/register/", {
+      await register({
         first_name: first_name,
         last_name: last_name || "",
         email,

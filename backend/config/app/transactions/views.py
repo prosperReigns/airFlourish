@@ -30,12 +30,16 @@ class InitiatePaymentView(APIView):
 
     def post(self, request):
         amount = Decimal(request.data.get("amount"))
+        currency = request.data.get("currency", "NGN")
+        transaction_type = request.data.get("transaction_type", "flight")
         reference = get_random_string(12).upper()
         transaction = Transaction.objects.create(
             user=request.user,
             amount=amount,
             reference=reference,
-            status="pending"
+            currency=currency,
+            transaction_type=transaction_type,
+            status="pending",
         )
 
         # Async task

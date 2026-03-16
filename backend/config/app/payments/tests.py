@@ -15,6 +15,7 @@ from app.bookings.models import Booking
 from app.payments.models import Payment
 from app.payments.serializers import PaymentSerializer
 from app.services.booking_engine import BookingEngine
+from app.transactions.models import Transaction
 
 PAYMENTS_URL = "/api/payments/payments/"
 CARD_INIT_URL = "/api/payments/card/initiate/"
@@ -379,6 +380,32 @@ class CardPaymentInitViewTests(BasePaymentTestCase):
             "100.00", "NGN", self.user.email, "tx-card-004"
         )
 
+    @patch("app.payments.views.FlutterwaveService.initiate_card_payment")
+    def test_card_init_creates_transaction(self, mock_initiate):
+        booking = self.create_booking(service_type="hotel")
+        mock_initiate.return_value = {
+            "link": "https://example.com/pay",
+            "flw_ref": "FLW555",
+            "tx_ref": "tx-card-005",
+        }
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            CARD_INIT_URL,
+            data={
+                "booking_id": booking.id,
+                "amount": "150.00",
+                "currency": "NGN",
+                "tx_ref": "tx-card-005",
+            },
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="idem-card-005",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        transaction = Transaction.objects.get(reference="tx-card-005")
+        self.assertEqual(transaction.user, self.user)
+        self.assertEqual(transaction.transaction_type, "hotel")
+        self.assertEqual(transaction.status, "pending")
+
 
 class BankTransferInitViewTests(BasePaymentTestCase):
     def test_bank_transfer_requires_auth(self):
@@ -474,7 +501,7 @@ class FlutterwaveWebhookTests(BasePaymentTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Already processed")
 
-    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.process_successful_payment.delay")
     @patch("app.payments.views.BookingEngine.attach_payment")
     def test_webhook_successful_payment_updates_and_triggers_tasks(
         self, mock_attach, mock_delay
@@ -559,7 +586,7 @@ class PaymentVerificationTests(BasePaymentTestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.process_successful_payment.delay")
     @patch("app.payments.views.BookingEngine.attach_payment")
     @patch("app.payments.views.FlutterwaveService.verify_payment")
     def test_verification_successful_updates_payment(
@@ -807,7 +834,7 @@ class PaymentAdvancedTests(BasePaymentTestCase):
     # ---------------------------
     # Webhook concurrency
     # ---------------------------
-    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.process_successful_payment.delay")
     @patch("app.payments.views.BookingEngine.attach_payment")
     def test_webhook_multiple_calls_idempotent(self, mock_attach, mock_delay):
         payment = self.create_payment()
@@ -942,7 +969,7 @@ class PaymentStressAndConcurrencyTests(BasePaymentTestCase):
     # ---------------------------
     # Simulate multiple webhooks arriving simultaneously
     # ---------------------------
-    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.process_successful_payment.delay")
     @patch("app.payments.views.BookingEngine.attach_payment")
     def test_concurrent_webhook_processing(self, mock_attach, mock_delay):
         payments = [self.create_payment(tx_ref=f"tx-webhook-concurrent-{i}") for i in range(10)]
@@ -992,7 +1019,7 @@ class PaymentStressAndConcurrencyTests(BasePaymentTestCase):
     # Mass payment verification
     # ---------------------------
     @patch("app.payments.views.FlutterwaveService.verify_payment")
-    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.process_successful_payment.delay")
     @patch("app.payments.views.BookingEngine.attach_payment")
     def test_bulk_verification(self, mock_attach, mock_delay, mock_verify):
         payments = [self.create_payment(tx_ref=f"tx-verify-bulk-{i}") for i in range(10)]
@@ -1133,7 +1160,7 @@ class PaymentAdvancedEdgeTests(BasePaymentTestCase):
     # ---------------------------
     # Simulate rollback: payment fails after booking attached
     # ---------------------------
-    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.process_successful_payment.delay")
     @patch("app.payments.views.BookingEngine.attach_payment")
     @patch("app.payments.views.FlutterwaveService.verify_payment")
     def test_payment_verification_then_failure_rollback(
@@ -1212,7 +1239,7 @@ class PaymentAdvancedEdgeTests(BasePaymentTestCase):
     # ---------------------------
     # Multiple rapid webhook updates for same payment
     # ---------------------------
-    @patch("app.payments.views.process_flight_booking.delay")
+    @patch("app.payments.views.process_successful_payment.delay")
     @patch("app.payments.views.BookingEngine.attach_payment")
     def test_multiple_rapid_webhook_updates_same_payment(self, mock_attach, mock_delay):
         payment = self.create_payment(tx_ref="tx-rapid-001")

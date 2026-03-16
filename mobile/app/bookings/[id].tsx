@@ -1,27 +1,16 @@
-import axios from "axios";
+import { Booking, getBooking } from "@/services/booking";
 import { useSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
-interface BookingDetail {
-  id: number;
-  service_type: string;
-  reference_code: string;
-  status: string;
-  total_price: number;
-  currency: string;
-  external_service_id?: string;
-  details?: any;
-}
-
 export default function BookingDetailScreen() {
   const { id } = useSearchParams();
-  const [booking, setBooking] = useState<BookingDetail | null>(null);
+  const [booking, setBooking] = useState<Booking | null>(null);
 
   useEffect(() => {
-    axios
-      .get(`https://192.168.0.200:8000/api/bookings/${id}/`)
-      .then((res) => setBooking(res.data))
+    if (!id) return;
+    getBooking(id as string)
+      .then((data) => setBooking(data))
       .catch((err) => console.log(err));
   }, [id]);
 
@@ -48,7 +37,7 @@ export default function BookingDetailScreen() {
 
         <Text className="text-gray-500 mb-1">Total Price</Text>
         <Text className="text-gray-700 mb-2">
-          {booking.currency} {booking.total_price}
+          {booking.currency ?? "NGN"} {booking.total_price ?? "0.00"}
         </Text>
 
         {/* Optional: Show service-specific details */}

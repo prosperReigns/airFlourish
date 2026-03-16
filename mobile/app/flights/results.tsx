@@ -1,6 +1,6 @@
 import { api } from "@/services/api";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
     FlatList,
@@ -17,9 +17,9 @@ export default function FlightResultsScreen() {
   const [flights, setFlights] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchFlights = async () => {
+  const fetchFlights = useCallback(async () => {
     try {
-      const response = await api.get("/flights/search/", {
+      const response = await api.get("bookings/flights/search/", {
         params: {
           origin,
           destination,
@@ -34,11 +34,11 @@ export default function FlightResultsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [departureDate, destination, origin, returnDate]);
 
   useEffect(() => {
     fetchFlights();
-  }, []);
+  }, [fetchFlights]);
 
   if (loading) {
     return (

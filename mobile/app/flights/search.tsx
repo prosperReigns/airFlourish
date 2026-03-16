@@ -10,7 +10,7 @@ export default function FlightSearch() {
   const [date, setDate] = useState("");
 
   const searchFlights = async () => {
-    const response = await API.get("flights/search/", {
+    const response = await API.get("bookings/flights/search/", {
       params: {
         origin,
         destination,

@@ -15,6 +15,7 @@ from app.services.amadeus import AmadeusService
 from app.services.booking_engine import BookingEngine
 from app.services.flutterwave import FlutterwaveService
 from app.services.reference_generator import generate_booking_reference
+from app.transactions.services import get_or_create_transaction
 from .models import FlightBooking
 from .serializers import FlightBookingSerializer
 
@@ -289,6 +290,13 @@ class SecureFlightBookingView(APIView):
             payment_method="card",
             status="pending",
             raw_response={"meta": meta},
+        )
+
+        get_or_create_transaction(
+            booking=booking,
+            reference=tx_ref,
+            amount=confirmed_price,
+            currency=currency,
         )
 
         # Return payment link to frontend

@@ -1,17 +1,7 @@
-import axios from "axios";
+import { Booking, listBookings } from "@/services/booking";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
-
-interface Booking {
-  id: number;
-  service_type: string;
-  reference_code: string;
-  status: string;
-  total_price: number;
-  currency: string;
-  external_service_id?: string;
-}
 
 export default function MyBookingsScreen() {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -19,9 +9,8 @@ export default function MyBookingsScreen() {
 
   useEffect(() => {
     // Fetch user bookings from backend
-    axios
-      .get("https://192.168.0.200:8000/api/bookings/")
-      .then((res) => setBookings(res.data))
+    listBookings()
+      .then((data) => setBookings(data))
       .catch((err) => console.log(err));
   }, []);
 
@@ -40,7 +29,7 @@ export default function MyBookingsScreen() {
         {item.status.toUpperCase()}
       </Text>
       <Text className="text-gray-700 mt-1">
-        {item.currency} {item.total_price}
+        {item.currency ?? "NGN"} {item.total_price ?? "0.00"}
       </Text>
     </TouchableOpacity>
   );

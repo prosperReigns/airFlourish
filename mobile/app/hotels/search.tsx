@@ -1,4 +1,4 @@
-import axios from "axios";
+import { api } from "@/services/api";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -10,9 +10,10 @@ import {
 } from "react-native";
 
 interface Hotel {
-  hotel_id: string;
+  id: number;
   hotel_name: string;
-  price: number;
+  price_per_night?: number;
+  currency?: string;
   city: string;
 }
 
@@ -24,8 +25,8 @@ export default function HotelSearchScreen() {
   const router = useRouter();
 
   const searchHotels = () => {
-    axios
-      .get(`https://192.168.0.200:8000/api/hotels/search/`, {
+    api
+      .get("hotels/hotels/", {
         params: { city, check_in: checkIn, check_out: checkOut, guests: 1 },
       })
       .then((res) => setHotels(res.data))
@@ -35,11 +36,23 @@ export default function HotelSearchScreen() {
   const renderHotel = ({ item }: { item: Hotel }) => (
     <TouchableOpacity
       className="bg-white rounded-2xl p-4 mb-4 shadow"
-      onPress={() => router.push(`/hotels/book/${item.hotel_id}`)}
+      onPress={() =>
+        router.push({
+          pathname: "/hotels/book/[id]",
+          params: {
+            id: item.id.toString(),
+            checkIn,
+            checkOut,
+            guests: "1",
+          },
+        })
+      }
     >
       <Text className="text-lg font-semibold">{item.hotel_name}</Text>
       <Text className="text-gray-500">{item.city}</Text>
-      <Text className="text-gray-700 mt-1">NGN {item.price}</Text>
+      <Text className="text-gray-700 mt-1">
+        {item.currency ?? "NGN"} {item.price_per_night ?? "0.00"}
+      </Text>
     </TouchableOpacity>
   );
 
@@ -73,7 +86,7 @@ export default function HotelSearchScreen() {
 
       <FlatList
         data={hotels}
-        keyExtractor={(item) => item.hotel_id}
+        keyExtractor={(item) => item.id.toString()}
         renderItem={renderHotel}
         showsVerticalScrollIndicator={false}
       />

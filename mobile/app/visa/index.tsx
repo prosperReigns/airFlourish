@@ -1,23 +1,28 @@
-import axios from "axios";
+import { api } from "@/services/api";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 export default function VisaApplicationScreen() {
   const [country, setCountry] = useState("");
   const [visaType, setVisaType] = useState("");
-  const [applicantName, setApplicantName] = useState("");
+  const [appointmentDate, setAppointmentDate] = useState("");
+  const [visaFee, setVisaFee] = useState("");
   const router = useRouter();
 
   const applyVisa = () => {
-    axios
-      .post("https://192.168.0.200:8000/api/visa/", {
-        country,
+    if (appointmentDate && !/^\d{4}-\d{2}-\d{2}$/.test(appointmentDate)) {
+      Alert.alert("Invalid date", "Use YYYY-MM-DD for the appointment date.");
+      return;
+    }
+
+    api
+      .post("visas/visas/", {
+        destination_country: country,
         visa_type: visaType,
-        applicant_name: applicantName,
-        issue_date: "2026-03-01",
-        expiry_date: "2027-03-01",
-        visa_fee: 50000,
+        appointment_date: appointmentDate || null,
+        visa_fee: Number(visaFee) || 0,
+        currency: "NGN",
       })
       .then((res) => router.push("/bookings"))
       .catch((err) => console.log(err));
@@ -39,9 +44,16 @@ export default function VisaApplicationScreen() {
         className="bg-white p-3 rounded-xl mb-2"
       />
       <TextInput
-        placeholder="Applicant Name"
-        value={applicantName}
-        onChangeText={setApplicantName}
+        placeholder="Appointment Date (YYYY-MM-DD)"
+        value={appointmentDate}
+        onChangeText={setAppointmentDate}
+        className="bg-white p-3 rounded-xl mb-2"
+      />
+      <TextInput
+        placeholder="Visa Fee (NGN)"
+        value={visaFee}
+        onChangeText={setVisaFee}
+        keyboardType="numeric"
         className="bg-white p-3 rounded-xl mb-4"
       />
 

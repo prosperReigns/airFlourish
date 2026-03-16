@@ -1,28 +1,25 @@
-import axios from "axios";
-import { useRouter, useSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { Booking, getBooking } from "@/services/booking";
+import { createIdempotencyKey, initiateCardPayment } from "@/services/payment";
+import * as Linking from "expo-linking";
+import { useSearchParams } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Text, TouchableOpacity, View } from "react-native";
-
-interface Booking {
-  id: number;
-  service_type: string;
-  total_price: number;
-  currency: string;
-  reference_code: string;
-}
 
 export default function PaymentScreen() {
   const { bookingId } = useSearchParams();
-  const router = useRouter();
+  const bookingIdValue = useMemo(
+    () => (Array.isArray(bookingId) ? bookingId[0] : bookingId),
+    [bookingId],
+  );
   const [booking, setBooking] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    axios
-      .get(`https://192.168.0.200:8000/api/bookings/${bookingId}/`)
-      .then((res) => setBooking(res.data))
+    if (!bookingIdValue) return;
+    getBooking(bookingIdValue)
+      .then((data) => setBooking(data))
       .catch((err) => console.log(err));
-  }, [bookingId]);
+  }, [bookingIdValue]);
 
   const handlePayment = async () => {
     if (!booking) return;
@@ -30,25 +27,33 @@ export default function PaymentScreen() {
     setLoading(true);
 
     // Generate a unique tx_ref
-    const txRef = `TX-${booking.reference_code}`;
+    const txRef = `PAY-${booking.reference_code}-${Date.now()}`;
+    const currency = booking.currency ?? "NGN";
+    const amount = booking.total_price;
+
+    if (amount === null || amount === undefined) {
+      Alert.alert("Payment Error", "Missing booking amount.");
+      setLoading(false);
+      return;
+    }
 
     try {
       // Initialize payment on backend (Flutterwave)
-      const res = await axios.post(
-        "https://your-backend.com/api/payments/init/",
-        {
-          amount: booking.total_price,
-          currency: booking.currency,
-          tx_ref: txRef,
-        },
-      );
+      const res = await initiateCardPayment({
+        bookingId: booking.id,
+        amount,
+        currency,
+        txRef,
+        idempotencyKey: createIdempotencyKey(),
+      });
 
-      const { payment_link } = res.data;
+      const paymentLink = res.gateway?.link;
+      if (!paymentLink) {
+        throw new Error("Payment link missing");
+      }
 
       // Open payment link (Expo Linking)
-      import("expo-linking").then(({ default: Linking }) => {
-        Linking.openURL(payment_link);
-      });
+      await Linking.openURL(paymentLink);
     } catch (error) {
       console.log(error);
       Alert.alert("Payment Error", "Failed to initialize payment");
@@ -74,7 +79,7 @@ export default function PaymentScreen() {
 
         <Text className="text-gray-500 mb-1">Total Amount</Text>
         <Text className="text-gray-700 font-semibold">
-          {booking.currency} {booking.total_price}
+          {booking.currency ?? "NGN"} {booking.total_price ?? "0.00"}
         </Text>
       </View>
 
