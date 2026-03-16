@@ -495,6 +495,13 @@ class VerifyFlightPaymentView(APIView):
             return mark_verification_failed("Payment verification failed", verification)
         payment.refresh_from_db(fields=["flutterwave_charge_id"])
         payment_reference = payment.flutterwave_charge_id
+        if not payment_reference:
+            verification_data = verification_result.normalized_verification.get("data", {})
+            if isinstance(verification_data, dict):
+                payment_reference = verification_data.get("id")
+            if payment_reference:
+                payment.flutterwave_charge_id = str(payment_reference)
+                payment.save(update_fields=["flutterwave_charge_id"])
 
         if FlightBooking.objects.filter(booking=payment.booking).exists():
             finalize_successful_payment(meta, payment_reference)

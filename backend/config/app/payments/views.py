@@ -187,7 +187,7 @@ class FlutterwaveWebhookView(APIView):
         signature_bytes = _signature_to_bytes(signature)
         expected_signature_bytes = _signature_to_bytes(expected_signature)
         if not signature_bytes:
-            return Response({"error": "Invalid signature"}, status=400)
+            return Response({"error": "Missing signature"}, status=400)
         if not expected_signature_bytes:
             return Response(
                 {"error": "Payment verification unavailable due to configuration error"},
