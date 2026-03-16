@@ -608,9 +608,9 @@ class PaymentVerificationView(APIView):
         try:
             verified_amount = Decimal(str(data.get("amount")))
         except (InvalidOperation, TypeError):
-            tx_ref_for_logging = str(tx_ref).replace("\n", "\\n").replace("\r", "\\r")
+            safe_tx_ref = str(tx_ref).replace("\n", "\\n").replace("\r", "\\r")
             logger.warning(
-                "Payment verification amount parse failed for tx_ref=%s", tx_ref_for_logging
+                "Payment verification amount parse failed for tx_ref=%s", safe_tx_ref
             )
             verified_amount = None
 

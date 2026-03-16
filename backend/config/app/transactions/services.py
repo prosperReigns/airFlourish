@@ -43,13 +43,13 @@ def get_or_create_transaction(*, booking, reference: str, amount=None, currency=
 
 def mark_transaction_success(transaction, provider_response=None):
     with db_transaction.atomic():
-        original_transaction = transaction
+        transaction_ref = transaction
         locked_transaction = Transaction.objects.select_for_update().get(
-            pk=original_transaction.pk
+            pk=transaction_ref.pk
         )
         if locked_transaction.status == "successful":
-            original_transaction.refresh_from_db()
-            return original_transaction
+            transaction_ref.refresh_from_db()
+            return transaction_ref
 
         locked_transaction.status = "successful"
         if provider_response is not None:
@@ -86,19 +86,19 @@ def mark_transaction_success(transaction, provider_response=None):
             metadata={"transaction_id": str(locked_transaction.id)},
         )
 
-        original_transaction.refresh_from_db()
-    return original_transaction
+        transaction_ref.refresh_from_db()
+    return transaction_ref
 
 
 def mark_transaction_failed(transaction, provider_response=None):
     with db_transaction.atomic():
-        original_transaction = transaction
+        transaction_ref = transaction
         locked_transaction = Transaction.objects.select_for_update().get(
-            pk=original_transaction.pk
+            pk=transaction_ref.pk
         )
         if locked_transaction.status == "failed":
-            original_transaction.refresh_from_db()
-            return original_transaction
+            transaction_ref.refresh_from_db()
+            return transaction_ref
 
         locked_transaction.status = "failed"
         if provider_response is not None:
@@ -124,5 +124,5 @@ def mark_transaction_failed(transaction, provider_response=None):
             metadata={"transaction_id": str(locked_transaction.id)},
         )
 
-        original_transaction.refresh_from_db()
-    return original_transaction
+        transaction_ref.refresh_from_db()
+    return transaction_ref
