@@ -1,4 +1,3 @@
-import { api } from "@/services/api";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -9,11 +8,10 @@ export default function FlightDetailsScreen() {
   const parsedFlight = JSON.parse(flight as string);
 
   const handleBook = async () => {
-    await api.post("/flights/book/", {
-      flight: parsedFlight,
+    router.push({
+      pathname: "/flights/passengers",
+      params: { flight: JSON.stringify(parsedFlight) },
     });
-
-    router.push("/(tabs)/bookings");
   };
 
   return (

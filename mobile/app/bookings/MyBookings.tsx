@@ -1,16 +1,7 @@
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { useState, useEffect } from "react";
-import axios from "axios";
+import { Booking, listBookings } from "@/services/booking";
 import { useRouter } from "expo-router";
-
-interface Booking {
-  id: number;
-  service_type: string;
-  total_price: number;
-  currency: string;
-  status: string;
-  reference_code: string;
-}
 
 export default function MyBookings() {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -20,8 +11,8 @@ export default function MyBookings() {
 
   const fetchBookings = async () => {
     try {
-      const res = await axios.get("https://your-backend.com/api/bookings/");
-      setBookings(res.data);
+      const data = await listBookings();
+      setBookings(data);
     } catch (err) {
       console.log(err);
     } finally {
@@ -63,7 +54,7 @@ export default function MyBookings() {
 
           <Text className="text-gray-500 mb-1">Amount</Text>
           <Text className="text-gray-700 mb-2">
-            {booking.currency} {booking.total_price}
+            {booking.currency ?? "NGN"} {booking.total_price ?? "0.00"}
           </Text>
 
           <Text className="text-gray-500 mb-1">Status</Text>

@@ -1,18 +1,17 @@
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import { createDrawerNavigator } from "@react-navigation/drawer";
 import { Ionicons } from "@expo/vector-icons";
 import { TouchableOpacity, View, Text } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useAuthStore } from "@/store/authStore";
 
 const Drawer = createDrawerNavigator();
 
 function CustomDrawerContent(props: any) {
   const router = useRouter();
+  const { logout: signOut } = useAuthStore();
 
-  const logout = async () => {
-    await AsyncStorage.removeItem("access_token");
-    await AsyncStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    await signOut();
     router.replace("/(auth)/login");
   };
 
@@ -38,7 +37,7 @@ function CustomDrawerContent(props: any) {
 
       <TouchableOpacity
         style={{ marginTop: 20, marginLeft: 20 }}
-        onPress={logout}
+        onPress={handleLogout}
       >
         <Text style={{ color: "red" }}>Logout</Text>
       </TouchableOpacity>

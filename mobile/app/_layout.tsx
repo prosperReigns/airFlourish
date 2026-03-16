@@ -1,24 +1,18 @@
 import { Stack, useRouter, useSegments } from "expo-router";
-import { useEffect, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect } from "react";
 import { View, ActivityIndicator } from "react-native";
+import { useAuthStore } from "@/store/authStore";
 
 export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
 
-  const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
+  const { token, loading, restoreSession } = useAuthStore();
+  const authenticated = Boolean(token);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const token = await AsyncStorage.getItem("access_token");
-      setAuthenticated(!!token);
-      setLoading(false);
-    };
-
-    checkAuth();
-  }, []);
+    restoreSession();
+  }, [restoreSession]);
 
   useEffect(() => {
     if (loading) return;
@@ -32,7 +26,7 @@ export default function RootLayout() {
     if (authenticated && inAuthGroup) {
       router.replace("/(tabs)");
     }
-  }, [authenticated, loading]);
+  }, [authenticated, loading, router, segments]);
 
   if (loading) {
     return (

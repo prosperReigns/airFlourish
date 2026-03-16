@@ -4,9 +4,8 @@ import { useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { WebView } from "react-native-webview";
 
-const router = useRouter();
-
 export default function PaymentScreen() {
+  const router = useRouter();
   const { flight, passenger } = useLocalSearchParams();
   const parsedFlight = JSON.parse(flight as string);
   const parsedPassenger = JSON.parse(passenger as string);
@@ -18,26 +17,35 @@ export default function PaymentScreen() {
     setLoading(true);
 
     try {
-      const response = await api.post("/payments/init/", {
-        amount: parsedFlight.price.total,
-        currency: parsedFlight.price.currency,
-        tx_ref: `FL-${Date.now()}`,
-        meta: {
-          flight_offer: parsedFlight,
-          travelers: [
-            {
-              id: "1",
-              dateOfBirth: parsedPassenger.dob,
-              name: {
-                firstName: parsedPassenger.firstName,
-                lastName: parsedPassenger.lastName,
-              },
+      const departureSegment = parsedFlight.itineraries?.[0]?.segments?.[0];
+      const arrivalSegment = parsedFlight.itineraries?.[0]?.segments?.slice(-1)[0];
+
+      const returnSegment = parsedFlight.itineraries?.[1]?.segments?.slice(-1)[0];
+
+      const response = await api.post("flights/secure-book/", {
+        flight_offer: parsedFlight,
+        travelers: [
+          {
+            id: "1",
+            dateOfBirth: parsedPassenger.dob,
+            name: {
+              firstName: parsedPassenger.firstName,
+              lastName: parsedPassenger.lastName,
             },
-          ],
-        },
+          },
+        ],
+        departure_city: departureSegment?.departure?.iataCode,
+        arrival_city: arrivalSegment?.arrival?.iataCode,
+        departure_date: departureSegment?.departure?.at?.split("T")[0],
+        return_date: returnSegment?.arrival?.at?.split("T")[0],
+        airline: parsedFlight.validatingAirlineCodes?.[0],
+        passengers: 1,
       });
 
-      setCheckoutUrl(response.data.link);
+      if (!response.data?.payment_link) {
+        throw new Error("Payment link not provided");
+      }
+      setCheckoutUrl(response.data.payment_link);
     } catch (err) {
       console.log(err);
     } finally {
