@@ -18,7 +18,9 @@ def process_flight_booking_logic(payment):
     travelers = meta.get("travelers")
 
     if not flight_offer or not travelers:
-        raise ValueError("Missing flight_offer or travelers in payment metadata")
+        raise ValueError(
+            f"Payment {payment.id} missing flight_offer or travelers in metadata"
+        )
 
     # Call Amadeus
     flight_order = AmadeusService.create_flight_order(

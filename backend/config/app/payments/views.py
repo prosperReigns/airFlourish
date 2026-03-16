@@ -21,7 +21,7 @@ def _merge_payment_metadata(payment, payload):
     raw_response = dict(payment.raw_response or {})
     raw_response.setdefault("meta", {})
     raw_response["flutterwave"] = payload
-    payment.raw_response = raw_response
+    return raw_response
 
 # --- ViewSet for Admin/User Payment access ---
 @method_decorator(
@@ -197,7 +197,7 @@ class FlutterwaveWebhookView(APIView):
 
             payment.status = "succeeded"
             payment.flutterwave_charge_id = str(charge_id)
-            _merge_payment_metadata(payment, data)
+            payment.raw_response = _merge_payment_metadata(payment, data)
             payment.paid_at = timezone.now()
             payment.save()
 
@@ -210,7 +210,7 @@ class FlutterwaveWebhookView(APIView):
             return Response({"message": "Payment processed"}, status=200)
 
         payment.status = "failed"
-        _merge_payment_metadata(payment, data)
+        payment.raw_response = _merge_payment_metadata(payment, data)
         payment.save()
 
         BookingEngine.update_status(payment.booking, 'failed')
@@ -601,7 +601,7 @@ class PaymentVerificationView(APIView):
 
             payment.status = "succeeded"
             payment.flutterwave_charge_id = str(data.get("id"))
-            _merge_payment_metadata(payment, verification_response)
+            payment.raw_response = _merge_payment_metadata(payment, verification_response)
             payment.paid_at = timezone.now()
             payment.save()
 
@@ -617,7 +617,7 @@ class PaymentVerificationView(APIView):
             })
 
         payment.status = "failed"
-        _merge_payment_metadata(payment, verification_response)
+        payment.raw_response = _merge_payment_metadata(payment, verification_response)
         payment.save()
 
         BookingEngine.update_status(payment.booking, "failed")

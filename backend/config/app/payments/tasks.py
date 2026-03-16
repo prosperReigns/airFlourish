@@ -1,3 +1,5 @@
+import uuid
+
 from celery import shared_task
 
 from app.audit.services import log_action
@@ -50,7 +52,8 @@ def _confirm_visa_booking(booking):
 def process_successful_payment(self, payment_id):
     payment = None
     try:
-        payment = Payment.objects.select_related("booking", "booking__user").get(id=payment_id)
+        payment_uuid = uuid.UUID(str(payment_id))
+        payment = Payment.objects.select_related("booking", "booking__user").get(id=payment_uuid)
         booking = payment.booking
 
         if payment.status != "succeeded":
