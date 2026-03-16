@@ -57,7 +57,7 @@ class BookingEngine:
         # Step 2: Handle payment if exists
         try:
             payment = booking.payment  # OneToOne relation
-            if payment.status == "successful":
+            if payment.status == "succeeded":
                 # You could call your payment gateway refund here
                 payment.status = "refunded"  # or "cancelled"
                 payment.save()

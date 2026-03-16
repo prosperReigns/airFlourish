@@ -191,7 +191,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                 )
 
             # Ensure flight is paid
-            paid = Payment.objects.filter(booking=flight.booking, status="successful").exists()
+            paid = Payment.objects.filter(booking=flight.booking, status="succeeded").exists()
             if not paid:
                 return Response({"error": "Flight must be paid before visa application"}, status=status.HTTP_400_BAD_REQUEST)
 
