@@ -16,6 +16,11 @@ from app.transactions.services import get_or_create_transaction, mark_transactio
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
+
+def _merge_payment_metadata(payment, payload):
+    existing_meta = (payment.raw_response or {}).get("meta", {})
+    payment.raw_response = {"meta": existing_meta, "flutterwave": payload}
+
 # --- ViewSet for Admin/User Payment access ---
 @method_decorator(
     name="list",
@@ -190,8 +195,7 @@ class FlutterwaveWebhookView(APIView):
 
             payment.status = "succeeded"
             payment.flutterwave_charge_id = str(charge_id)
-            existing_meta = (payment.raw_response or {}).get("meta", {})
-            payment.raw_response = {"meta": existing_meta, "flutterwave": data}
+            _merge_payment_metadata(payment, data)
             payment.paid_at = timezone.now()
             payment.save()
 
@@ -204,8 +208,7 @@ class FlutterwaveWebhookView(APIView):
             return Response({"message": "Payment processed"}, status=200)
 
         payment.status = "failed"
-        existing_meta = (payment.raw_response or {}).get("meta", {})
-        payment.raw_response = {"meta": existing_meta, "flutterwave": data}
+        _merge_payment_metadata(payment, data)
         payment.save()
 
         BookingEngine.update_status(payment.booking, 'failed')
@@ -596,8 +599,7 @@ class PaymentVerificationView(APIView):
 
             payment.status = "succeeded"
             payment.flutterwave_charge_id = str(data.get("id"))
-            existing_meta = (payment.raw_response or {}).get("meta", {})
-            payment.raw_response = {"meta": existing_meta, "flutterwave": verification_response}
+            _merge_payment_metadata(payment, verification_response)
             payment.paid_at = timezone.now()
             payment.save()
 
@@ -613,8 +615,7 @@ class PaymentVerificationView(APIView):
             })
 
         payment.status = "failed"
-        existing_meta = (payment.raw_response or {}).get("meta", {})
-        payment.raw_response = {"meta": existing_meta, "flutterwave": verification_response}
+        _merge_payment_metadata(payment, verification_response)
         payment.save()
 
         BookingEngine.update_status(payment.booking, "failed")

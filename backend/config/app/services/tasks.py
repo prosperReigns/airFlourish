@@ -1,3 +1,5 @@
+import logging
+
 from celery import shared_task
 
 from app.flights.models import FlightBooking
@@ -5,6 +7,8 @@ from app.payments.models import Payment
 from app.services.amadeus import AmadeusService
 from app.services.booking_engine import BookingEngine
 from app.services.flutterwave import FlutterwaveService
+
+logger = logging.getLogger(__name__)
 
 
 def process_flight_booking_logic(payment):
@@ -54,7 +58,13 @@ def process_flight_booking(self, payment_id):
     except Exception as e:
         # Refund on failure
         if payment.flutterwave_charge_id:
-            FlutterwaveService().refund_payment(payment.flutterwave_charge_id)
+            try:
+                FlutterwaveService().refund_payment(payment.flutterwave_charge_id)
+            except Exception:
+                logger.exception(
+                    "Failed to refund Flutterwave charge %s",
+                    payment.flutterwave_charge_id,
+                )
         payment.status = "booking_failed"
         payment.save(update_fields=["status"])
 

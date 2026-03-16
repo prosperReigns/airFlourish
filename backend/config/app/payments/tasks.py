@@ -27,11 +27,12 @@ def _confirm_transport_booking(booking):
         return
 
     if not TransportReservation.objects.filter(booking=booking).exists():
+        passengers_count = service.passengers or 1
         TransportReservation.objects.create(
             service=service,
             booking=booking,
             reserved_by=booking.user,
-            passengers_count=service.passengers or 1,
+            passengers_count=passengers_count,
             special_requests=service.special_requests or "",
             status="confirmed",
         )
