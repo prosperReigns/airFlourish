@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 from django.utils import timezone
@@ -496,7 +496,7 @@ class VerifyFlightPaymentView(APIView):
 
         try:
             verified_amount = Decimal(str(verification_data.get("amount")))
-        except Exception:
+        except (InvalidOperation, TypeError, ValueError):
             verified_amount = None
 
         if verified_amount is None or verified_amount != payment.amount:
@@ -525,7 +525,11 @@ class VerifyFlightPaymentView(APIView):
                 travelers,
             )
         except Exception as exc:
-            return mark_booking_failed("Airline booking failed", details=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+            return mark_booking_failed(
+                "Airline booking failed",
+                details=str(exc),
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         if flight_order.get("id"):
             payment.booking.external_service_id = flight_order["id"]

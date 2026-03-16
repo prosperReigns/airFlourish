@@ -8,8 +8,13 @@ def _get_client():
     global _amadeus_client
 
     if _amadeus_client is None:
-        if not settings.AMADEUS_API_KEY or not settings.AMADEUS_API_SECRET:
-            raise RuntimeError("Amadeus credentials not configured")
+        missing = []
+        if not settings.AMADEUS_API_KEY:
+            missing.append("AMADEUS_API_KEY")
+        if not settings.AMADEUS_API_SECRET:
+            missing.append("AMADEUS_API_SECRET")
+        if missing:
+            raise RuntimeError(f"Amadeus credentials not configured: {', '.join(missing)}")
         _amadeus_client = Client(
             client_id=settings.AMADEUS_API_KEY,
             client_secret=settings.AMADEUS_API_SECRET,

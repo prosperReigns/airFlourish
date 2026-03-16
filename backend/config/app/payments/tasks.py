@@ -59,7 +59,7 @@ def process_successful_payment(self, payment_id):
         payment = Payment.objects.select_related("booking", "booking__user").get(id=payment_uuid)
         booking = payment.booking
         raw_response = dict(payment.raw_response or {})
-        raw_response.setdefault("meta", raw_response.get("meta") or {})
+        raw_response.setdefault("meta", {})
         verification = raw_response.get("verification")
         if not verification:
             flutterwave_payload = raw_response.get("flutterwave")
