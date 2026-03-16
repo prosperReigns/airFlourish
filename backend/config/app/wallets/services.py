@@ -7,19 +7,20 @@ def credit_wallet(wallet: Wallet, amount: Decimal, description: str, transaction
 
     with transaction.atomic():
 
-        wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
-        wallet.balance = wallet.balance + amount
-        wallet.save(update_fields=["balance"])
+        locked_wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+        locked_wallet.balance = locked_wallet.balance + amount
+        locked_wallet.save(update_fields=["balance"])
 
         LedgerEntry.objects.create(
-            wallet=wallet,
+            wallet=locked_wallet,
             transaction=transaction_obj,
             entry_type="credit",
             amount=amount,
-            balance_after=wallet.balance,
+            balance_after=locked_wallet.balance,
             description=description
         )
 
+    wallet.refresh_from_db()
     return wallet
 
 
@@ -27,22 +28,23 @@ def debit_wallet(wallet: Wallet, amount: Decimal, description: str, transaction_
 
     with transaction.atomic():
 
-        wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
-        if wallet.balance < amount:
+        locked_wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+        if locked_wallet.balance < amount:
             raise ValueError(
-                f"Insufficient wallet balance (balance={wallet.balance}, requested={amount})"
+                f"Insufficient wallet balance (balance={locked_wallet.balance}, requested={amount})"
             )
 
-        wallet.balance = wallet.balance - amount
-        wallet.save(update_fields=["balance"])
+        locked_wallet.balance = locked_wallet.balance - amount
+        locked_wallet.save(update_fields=["balance"])
 
         LedgerEntry.objects.create(
-            wallet=wallet,
+            wallet=locked_wallet,
             transaction=transaction_obj,
             entry_type="debit",
             amount=amount,
-            balance_after=wallet.balance,
+            balance_after=locked_wallet.balance,
             description=description
         )
 
+    wallet.refresh_from_db()
     return wallet

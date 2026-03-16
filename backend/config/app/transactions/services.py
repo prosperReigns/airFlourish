@@ -43,73 +43,86 @@ def get_or_create_transaction(*, booking, reference: str, amount=None, currency=
 
 def mark_transaction_success(transaction, provider_response=None):
     with db_transaction.atomic():
-        transaction = Transaction.objects.select_for_update().get(pk=transaction.pk)
-        if transaction.status == "successful":
-            return transaction
+        original_transaction = transaction
+        locked_transaction = Transaction.objects.select_for_update().get(
+            pk=original_transaction.pk
+        )
+        if locked_transaction.status == "successful":
+            original_transaction.refresh_from_db()
+            return original_transaction
 
-        transaction.status = "successful"
+        locked_transaction.status = "successful"
         if provider_response is not None:
-            transaction.provider_response = provider_response
+            locked_transaction.provider_response = provider_response
         update_fields = ["status"]
         if provider_response is not None:
             update_fields.append("provider_response")
-        transaction.save(update_fields=update_fields)
+        locked_transaction.save(update_fields=update_fields)
 
-        wallet, _ = Wallet.objects.get_or_create(user=transaction.user)
+        wallet, _ = Wallet.objects.get_or_create(user=locked_transaction.user)
         credit_wallet(
             wallet,
-            transaction.amount,
-            f"Payment received for {transaction.transaction_type} booking ({transaction.reference})",
-            transaction,
+            locked_transaction.amount,
+            (
+                "Payment received for "
+                f"{locked_transaction.transaction_type} booking ({locked_transaction.reference})"
+            ),
+            locked_transaction,
         )
 
         create_notification(
-            user=transaction.user,
+            user=locked_transaction.user,
             title="Payment successful",
             message=(
-                f"Payment {transaction.reference} of {transaction.amount} "
-                f"{transaction.currency} was successful."
+                f"Payment {locked_transaction.reference} of {locked_transaction.amount} "
+                f"{locked_transaction.currency} was successful."
             ),
             notification_type="success",
         )
 
         log_action(
-            actor=transaction.user,
+            actor=locked_transaction.user,
             action="payment_successful",
-            metadata={"transaction_id": str(transaction.id)},
+            metadata={"transaction_id": str(locked_transaction.id)},
         )
 
+        original_transaction.refresh_from_db()
     return transaction
 
 
 def mark_transaction_failed(transaction, provider_response=None):
     with db_transaction.atomic():
-        transaction = Transaction.objects.select_for_update().get(pk=transaction.pk)
-        if transaction.status == "failed":
-            return transaction
+        original_transaction = transaction
+        locked_transaction = Transaction.objects.select_for_update().get(
+            pk=original_transaction.pk
+        )
+        if locked_transaction.status == "failed":
+            original_transaction.refresh_from_db()
+            return original_transaction
 
-        transaction.status = "failed"
+        locked_transaction.status = "failed"
         if provider_response is not None:
-            transaction.provider_response = provider_response
+            locked_transaction.provider_response = provider_response
         update_fields = ["status"]
         if provider_response is not None:
             update_fields.append("provider_response")
-        transaction.save(update_fields=update_fields)
+        locked_transaction.save(update_fields=update_fields)
 
         create_notification(
-            user=transaction.user,
+            user=locked_transaction.user,
             title="Payment failed",
             message=(
-                f"Payment {transaction.reference} of {transaction.amount} "
-                f"{transaction.currency} failed."
+                f"Payment {locked_transaction.reference} of {locked_transaction.amount} "
+                f"{locked_transaction.currency} failed."
             ),
             notification_type="error",
         )
 
         log_action(
-            actor=transaction.user,
+            actor=locked_transaction.user,
             action="payment_failed",
-            metadata={"transaction_id": str(transaction.id)},
+            metadata={"transaction_id": str(locked_transaction.id)},
         )
 
+        original_transaction.refresh_from_db()
     return transaction

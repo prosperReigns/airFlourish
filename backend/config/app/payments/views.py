@@ -183,7 +183,7 @@ class FlutterwaveWebhookView(APIView):
         signature = request.headers.get("verif-hash")
         expected_signature = settings.FLUTTERWAVE_SECRET_HASH
         if not expected_signature:
-            return Response({"error": "Webhook secret not configured"}, status=503)
+            return Response({"error": "Service temporarily unavailable"}, status=503)
         if not signature or not hmac.compare_digest(signature, expected_signature):
             return Response({"error": "Invalid signature"}, status=400)
 
@@ -608,7 +608,10 @@ class PaymentVerificationView(APIView):
         try:
             verified_amount = Decimal(str(data.get("amount")))
         except (InvalidOperation, TypeError):
-            logger.warning("Payment verification amount parse failed for tx_ref=%s", tx_ref)
+            safe_tx_ref = str(tx_ref).replace("\n", "\\n").replace("\r", "\\r")
+            logger.warning(
+                "Payment verification amount parse failed for tx_ref=%s", safe_tx_ref
+            )
             verified_amount = None
 
         # Validate payment integrity
