@@ -452,7 +452,7 @@ class VerifyFlightPaymentView(APIView):
                 payload["details"] = details
             return Response(payload, status=status_code)
 
-        def finalize_successful_payment(updated_meta):
+        def finalize_successful_payment(updated_meta, payment_reference):
             payment.status = "succeeded"
             if payment.paid_at is None:
                 payment.paid_at = timezone.now()
@@ -461,7 +461,6 @@ class VerifyFlightPaymentView(APIView):
                 meta_update=updated_meta,
             )
             payment.save(update_fields=["status", "paid_at", "raw_response"])
-            payment_reference = payment.flutterwave_charge_id
             BookingEngine.attach_payment(
                 payment.booking,
                 "confirmed",
@@ -495,9 +494,10 @@ class VerifyFlightPaymentView(APIView):
         if not verification_result.is_successful:
             return mark_verification_failed("Payment verification failed", verification)
         payment.refresh_from_db(fields=["flutterwave_charge_id"])
+        payment_reference = payment.flutterwave_charge_id
 
         if FlightBooking.objects.filter(booking=payment.booking).exists():
-            finalize_successful_payment(meta)
+            finalize_successful_payment(meta, payment_reference)
             return Response(
                 {"message": "Flight booked successfully", "booking_id": payment.booking.id},
                 status=status.HTTP_200_OK,
@@ -566,7 +566,7 @@ class VerifyFlightPaymentView(APIView):
             "passengers": passengers,
         }
 
-        finalize_successful_payment(updated_meta)
+        finalize_successful_payment(updated_meta, payment_reference)
 
         return Response(
             {"message": "Flight booked successfully", "booking_id": payment.booking.id},
