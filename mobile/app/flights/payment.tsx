@@ -20,7 +20,8 @@ export default function PaymentScreen() {
       const departureSegment = parsedFlight.itineraries?.[0]?.segments?.[0];
       const arrivalSegment = parsedFlight.itineraries?.[0]?.segments?.slice(-1)[0];
 
-      const returnSegment = parsedFlight.itineraries?.[1]?.segments?.slice(-1)[0];
+      const returnSegment =
+        parsedFlight.itineraries?.[1]?.segments?.slice(-1)[0];
 
       const response = await api.post("flights/secure-book/", {
         flight_offer: parsedFlight,
@@ -37,7 +38,9 @@ export default function PaymentScreen() {
         departure_city: departureSegment?.departure?.iataCode,
         arrival_city: arrivalSegment?.arrival?.iataCode,
         departure_date: departureSegment?.departure?.at?.split("T")[0],
-        return_date: returnSegment?.arrival?.at?.split("T")[0],
+        return_date: returnSegment?.arrival?.at
+          ? returnSegment.arrival.at.split("T")[0]
+          : null,
         airline: parsedFlight.validatingAirlineCodes?.[0],
         passengers: 1,
       });

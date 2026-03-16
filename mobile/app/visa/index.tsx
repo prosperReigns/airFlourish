@@ -1,7 +1,7 @@
 import { api } from "@/services/api";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 export default function VisaApplicationScreen() {
   const [country, setCountry] = useState("");
@@ -11,6 +11,11 @@ export default function VisaApplicationScreen() {
   const router = useRouter();
 
   const applyVisa = () => {
+    if (appointmentDate && !/^\d{4}-\d{2}-\d{2}$/.test(appointmentDate)) {
+      Alert.alert("Invalid date", "Use YYYY-MM-DD for the appointment date.");
+      return;
+    }
+
     api
       .post("visas/visas/", {
         destination_country: country,
