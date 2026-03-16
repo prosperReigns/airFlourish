@@ -38,7 +38,7 @@ def get_or_create_transaction(*, booking, reference: str, amount=None, currency=
                 setattr(transaction, key, value)
             transaction.save(update_fields=list(updates.keys()))
 
-    return transaction
+    return original_transaction
 
 
 def mark_transaction_success(transaction, provider_response=None):
@@ -87,7 +87,7 @@ def mark_transaction_success(transaction, provider_response=None):
         )
 
         original_transaction.refresh_from_db()
-    return transaction
+    return original_transaction
 
 
 def mark_transaction_failed(transaction, provider_response=None):
