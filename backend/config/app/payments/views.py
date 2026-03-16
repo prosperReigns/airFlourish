@@ -19,6 +19,15 @@ from app.transactions.services import get_or_create_transaction, mark_transactio
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
+
+def _signature_to_bytes(value):
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, str):
+        return value.encode()
+    return None
+
+
 # --- ViewSet for Admin/User Payment access ---
 @method_decorator(
     name="list",
@@ -175,13 +184,6 @@ class FlutterwaveWebhookView(APIView):
                 {"error": "Payment verification unavailable due to configuration error"},
                 status=503,
             )
-        def _signature_to_bytes(value):
-            if isinstance(value, bytes):
-                return value
-            if isinstance(value, str):
-                return value.encode()
-            return None
-
         signature_bytes = _signature_to_bytes(signature)
         expected_signature_bytes = _signature_to_bytes(expected_signature)
         if not signature_bytes:

@@ -494,6 +494,7 @@ class VerifyFlightPaymentView(APIView):
         )
         if not verification_result.is_successful:
             return mark_verification_failed("Payment verification failed", verification)
+        payment.refresh_from_db(fields=["flutterwave_charge_id"])
 
         if FlightBooking.objects.filter(booking=payment.booking).exists():
             finalize_successful_payment(meta)
