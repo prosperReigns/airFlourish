@@ -594,6 +594,7 @@ class PaymentVerificationView(APIView):
             )
 
         if verification_result.is_successful:
+            payment.refresh_from_db()
             BookingEngine.attach_payment(payment.booking, "confirmed")
 
             transaction.on_commit(

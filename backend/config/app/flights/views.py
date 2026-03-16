@@ -462,10 +462,11 @@ class VerifyFlightPaymentView(APIView):
                 meta_update=updated_meta,
             )
             payment.save(update_fields=["status", "paid_at", "raw_response"])
+            payment_reference = payment.flutterwave_charge_id or None
             BookingEngine.attach_payment(
                 payment.booking,
                 "confirmed",
-                payment_reference=payment.flutterwave_charge_id,
+                payment_reference=payment_reference,
             )
             transaction_obj = get_or_create_transaction(
                 booking=payment.booking,

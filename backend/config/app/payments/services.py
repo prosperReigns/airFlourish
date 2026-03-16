@@ -128,13 +128,14 @@ class PaymentVerificationService:
             )
 
         payment.status = "succeeded"
-        if verification_data.get("id"):
-            payment.flutterwave_charge_id = str(verification_data.get("id"))
+        charge_id = verification_data.get("id")
+        if charge_id is not None:
+            payment.flutterwave_charge_id = str(charge_id)
         if payment.paid_at is None:
             payment.paid_at = timezone.now()
         payment.raw_response = raw_response
         update_fields = ["status", "raw_response", "paid_at"]
-        if verification_data.get("id"):
+        if charge_id is not None:
             update_fields.append("flutterwave_charge_id")
         payment.save(update_fields=update_fields)
 
