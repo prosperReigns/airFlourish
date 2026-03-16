@@ -8,6 +8,7 @@ from app.audit.services import log_action
 from app.hotels.models import HotelReservation
 from app.notifications.services import create_notification
 from app.payments.models import Payment
+from app.payments.utils import sanitize_flutterwave_payload
 from app.services.booking_engine import BookingEngine
 from app.services.flutterwave import FlutterwaveService
 from app.services.tasks import process_flight_booking_logic
@@ -68,7 +69,7 @@ def process_successful_payment(self, payment_id):
         if not verification:
             verification = FlutterwaveService().verify_payment(payment.tx_ref)
 
-        raw_response["verification"] = verification
+        raw_response["verification"] = sanitize_flutterwave_payload(verification)
 
         if verification.get("status") != "success":
             payment.status = "failed"

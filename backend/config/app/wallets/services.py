@@ -7,8 +7,9 @@ def credit_wallet(wallet: Wallet, amount: Decimal, description: str, transaction
 
     with transaction.atomic():
 
-        wallet.balance += amount
-        wallet.save()
+        wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+        wallet.balance = (wallet.balance or Decimal("0.00")) + amount
+        wallet.save(update_fields=["balance"])
 
         LedgerEntry.objects.create(
             wallet=wallet,
@@ -24,13 +25,14 @@ def credit_wallet(wallet: Wallet, amount: Decimal, description: str, transaction
 
 def debit_wallet(wallet: Wallet, amount: Decimal, description: str, transaction_obj=None):
 
-    if wallet.balance < amount:
-        raise ValueError("Insufficient wallet balance")
-
     with transaction.atomic():
 
-        wallet.balance -= amount
-        wallet.save()
+        wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+        if wallet.balance < amount:
+            raise ValueError("Insufficient wallet balance")
+
+        wallet.balance = wallet.balance - amount
+        wallet.save(update_fields=["balance"])
 
         LedgerEntry.objects.create(
             wallet=wallet,

@@ -1,3 +1,6 @@
+import hmac
+from decimal import Decimal, InvalidOperation
+
 from django.utils.decorators import method_decorator
 from rest_framework import viewsets, permissions, status
 from .models import Payment
@@ -13,6 +16,7 @@ from django.http import HttpResponse
 from app.services.booking_engine import BookingEngine
 from app.services.reference_generator import generate_booking_reference
 from app.payments.tasks import process_successful_payment
+from app.payments.utils import sanitize_flutterwave_payload
 from app.transactions.services import get_or_create_transaction, mark_transaction_failed
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -21,7 +25,7 @@ from drf_yasg import openapi
 def _merge_payment_metadata(payment, payload):
     raw_response = dict(payment.raw_response or {})
     raw_response.setdefault("meta", {})
-    raw_response["flutterwave"] = payload
+    raw_response["flutterwave"] = sanitize_flutterwave_payload(payload)
     return raw_response
 
 # --- ViewSet for Admin/User Payment access ---
@@ -174,7 +178,10 @@ class FlutterwaveWebhookView(APIView):
         """
 
         signature = request.headers.get("verif-hash")
-        if signature != settings.FLUTTERWAVE_SECRET_HASH:
+        expected_signature = settings.FLUTTERWAVE_SECRET_HASH
+        if not expected_signature:
+            return Response({"error": "Webhook secret not configured"}, status=500)
+        if not signature or not hmac.compare_digest(signature, expected_signature):
             return Response({"error": "Invalid signature"}, status=400)
 
         data = request.data
@@ -595,11 +602,16 @@ class PaymentVerificationView(APIView):
             }, status=400)
 
         data = verification_response.get("data", {})
+        try:
+            verified_amount = Decimal(str(data.get("amount")))
+        except (InvalidOperation, TypeError):
+            verified_amount = None
 
         # Validate payment integrity
         if (
             data.get("status") == "successful" and
-            float(data.get("amount")) == float(payment.amount) and
+            verified_amount is not None and
+            verified_amount == payment.amount and
             data.get("currency") == payment.currency
         ):
 

@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from django.db import transaction as db_transaction
+
 from app.audit.services import log_action
 from app.notifications.services import create_notification
 from app.wallets.models import Wallet
@@ -40,64 +42,74 @@ def get_or_create_transaction(*, booking, reference: str, amount=None, currency=
 
 
 def mark_transaction_success(transaction, provider_response=None):
-    if transaction.status == "successful":
-        return transaction
+    with db_transaction.atomic():
+        transaction = Transaction.objects.select_for_update().get(pk=transaction.pk)
+        if transaction.status == "successful":
+            return transaction
 
-    transaction.status = "successful"
-    if provider_response is not None:
-        transaction.provider_response = provider_response
-    transaction.save()
+        transaction.status = "successful"
+        if provider_response is not None:
+            transaction.provider_response = provider_response
+        update_fields = ["status"]
+        if provider_response is not None:
+            update_fields.append("provider_response")
+        transaction.save(update_fields=update_fields)
 
-    wallet, _ = Wallet.objects.get_or_create(user=transaction.user)
-    credit_wallet(
-        wallet,
-        transaction.amount,
-        f"Payment received for {transaction.transaction_type} booking ({transaction.reference})",
-        transaction,
-    )
+        wallet, _ = Wallet.objects.get_or_create(user=transaction.user)
+        credit_wallet(
+            wallet,
+            transaction.amount,
+            f"Payment received for {transaction.transaction_type} booking ({transaction.reference})",
+            transaction,
+        )
 
-    create_notification(
-        user=transaction.user,
-        title="Payment successful",
-        message=(
-            f"Payment {transaction.reference} of {transaction.amount} "
-            f"{transaction.currency} was successful."
-        ),
-        notification_type="success",
-    )
+        create_notification(
+            user=transaction.user,
+            title="Payment successful",
+            message=(
+                f"Payment {transaction.reference} of {transaction.amount} "
+                f"{transaction.currency} was successful."
+            ),
+            notification_type="success",
+        )
 
-    log_action(
-        actor=transaction.user,
-        action="payment_successful",
-        metadata={"transaction_id": str(transaction.id)},
-    )
+        log_action(
+            actor=transaction.user,
+            action="payment_successful",
+            metadata={"transaction_id": str(transaction.id)},
+        )
 
     return transaction
 
 
 def mark_transaction_failed(transaction, provider_response=None):
-    if transaction.status == "failed":
-        return transaction
+    with db_transaction.atomic():
+        transaction = Transaction.objects.select_for_update().get(pk=transaction.pk)
+        if transaction.status == "failed":
+            return transaction
 
-    transaction.status = "failed"
-    if provider_response is not None:
-        transaction.provider_response = provider_response
-    transaction.save()
+        transaction.status = "failed"
+        if provider_response is not None:
+            transaction.provider_response = provider_response
+        update_fields = ["status"]
+        if provider_response is not None:
+            update_fields.append("provider_response")
+        transaction.save(update_fields=update_fields)
 
-    create_notification(
-        user=transaction.user,
-        title="Payment failed",
-        message=(
-            f"Payment {transaction.reference} of {transaction.amount} "
-            f"{transaction.currency} failed."
-        ),
-        notification_type="error",
-    )
+        create_notification(
+            user=transaction.user,
+            title="Payment failed",
+            message=(
+                f"Payment {transaction.reference} of {transaction.amount} "
+                f"{transaction.currency} failed."
+            ),
+            notification_type="error",
+        )
 
-    log_action(
-        actor=transaction.user,
-        action="payment_failed",
-        metadata={"transaction_id": str(transaction.id)},
-    )
+        log_action(
+            actor=transaction.user,
+            action="payment_failed",
+            metadata={"transaction_id": str(transaction.id)},
+        )
 
     return transaction
