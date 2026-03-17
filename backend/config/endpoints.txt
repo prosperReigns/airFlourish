@@ -5,8 +5,8 @@ Default auth: JWT Bearer (IsAuthenticated) unless noted.
 USER ENDPOINTS (regular users; admin also has access unless stated)
 Auth & profile
 - POST /api/users/register/ (public)
-- POST /api/token/ (public)
-- POST /api/token/refresh/ (public)
+- POST /api/token/ (public; JWT login endpoint is top-level, not under /api/users/)
+- POST /api/token/refresh/ (public; JWT refresh endpoint is top-level)
 - GET /api/users/profile/
 - PATCH /api/users/profile/
 - POST /api/users/logout/
@@ -119,7 +119,7 @@ Transport (admin management)
 - DELETE /api/transport/admin-transport-reservations/{id}/
 
 Visas (admin actions)
-- POST /api/visas/approve/{visa_id}/ (legacy combined approve/reject; uses action=approve|reject)
+- POST /api/visas/approve/{visa_id}/ (legacy combined approve/reject; uses action in [approve, reject])
 - POST /api/visas/visas/{id}/verify_documents/
 - POST /api/visas/visas/{id}/submit_to_embassy/
 - POST /api/visas/visas/{id}/approve/
@@ -146,7 +146,7 @@ System Flows (endpoint order)
 
 2) Flight booking & payment
    - GET /api/bookings/flights/search/ (flight offers)
-   - POST /api/flights/secure-book/ (creates booking + payment link)
+   - POST /api/flights/secure-book/ (creates booking and returns a payment link)
      OR
      - POST /api/flights/flights/ (create booking)
      - POST /api/payments/card/initiate/ or /api/payments/bank-transfer/initiate/
@@ -177,4 +177,4 @@ System Flows (endpoint order)
        - POST /api/visas/visas/{id}/submit_to_embassy/
        - POST /api/visas/visas/{id}/approve/ or /api/visas/visas/{id}/reject/
      Alternative admin path (legacy combined endpoint):
-       - POST /api/visas/approve/{visa_id}/ with action=approve|reject
+       - POST /api/visas/approve/{visa_id}/ with action in [approve, reject]
