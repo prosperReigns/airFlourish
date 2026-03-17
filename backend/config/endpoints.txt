@@ -14,8 +14,9 @@ Auth & profile
 Bookings
 - GET /api/bookings/bookings/
 - POST /api/bookings/bookings/
-- GET /api/bookings/bookings/{id}/
-- DELETE /api/bookings/bookings/{id}/
+- GET /api/bookings/bookings/{id}/ (owner; admin sees all)
+- DELETE /api/bookings/bookings/{id}/ (owner; admin allowed)
+- PUT/PATCH /api/bookings/bookings/{id}/ (admin-only; see Admin section)
 - GET /api/bookings/flights/search/
 
 Flights
@@ -42,13 +43,13 @@ Transports
 - GET /api/transport/transport-options/
 - GET /api/transport/transport-options/{id}/
 - GET /api/transport/transports/
-- POST /api/transport/transports/
+- POST /api/transport/transports/ (creates a booking for the transport)
 - GET /api/transport/transports/{id}/
 - PUT /api/transport/transports/{id}/
 - PATCH /api/transport/transports/{id}/
 - DELETE /api/transport/transports/{id}/
 - GET /api/transport/transport-reservations/
-- POST /api/transport/transport-reservations/
+- POST /api/transport/transport-reservations/ (creates a reservation without booking/payment)
 - GET /api/transport/transport-reservations/{id}/
 - PUT /api/transport/transport-reservations/{id}/
 - PATCH /api/transport/transport-reservations/{id}/
@@ -118,7 +119,7 @@ Transport (admin management)
 - DELETE /api/transport/admin-transport-reservations/{id}/
 
 Visas (admin actions)
-- POST /api/visas/approve/{visa_id}/
+- POST /api/visas/approve/{visa_id}/ (legacy combined approve/reject; uses action=approve|reject)
 - POST /api/visas/visas/{id}/verify_documents/
 - POST /api/visas/visas/{id}/submit_to_embassy/
 - POST /api/visas/visas/{id}/approve/
@@ -162,9 +163,9 @@ System Flows (endpoint order)
 
 4) Transport booking & payment
    - GET /api/transport/transport-options/ or /api/transport/search/
-   - POST /api/transport/transports/ (book transport)
+   - POST /api/transport/transports/ (book transport and create Booking)
      OR
-     - POST /api/transport/transport-reservations/ (reserve transport)
+     - POST /api/transport/transport-reservations/ (reserve without booking/payment)
    - Payment flow same as above
    - POST /api/transport/transport-reservations/{id}/cancel/ (optional)
 
@@ -175,5 +176,5 @@ System Flows (endpoint order)
        - POST /api/visas/visas/{id}/verify_documents/
        - POST /api/visas/visas/{id}/submit_to_embassy/
        - POST /api/visas/visas/{id}/approve/ or /api/visas/visas/{id}/reject/
-     Alternative admin path:
+     Alternative admin path (legacy combined endpoint):
        - POST /api/visas/approve/{visa_id}/ with action=approve|reject
