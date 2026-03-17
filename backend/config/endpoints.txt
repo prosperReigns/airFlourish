@@ -151,14 +151,14 @@ SYSTEM FLOW (endpoint order)
      - POST /api/payments/card/initiate/ or /api/payments/bank-transfer/initiate/
    - User completes payment on Flutterwave
    - POST /api/flights/verify-payment/ or /api/payments/verify/ (if webhook not used)
-   - GET /api/transactions/my-transactions/ /api/wallet/ledger/ /api/notifications/
+   - GET /api/transactions/my-transactions/, /api/wallet/ledger/, /api/notifications/
 
 3) Hotel booking & payment
    - GET /api/hotels/hotels/ (browse)
    - POST /api/hotels/hotel-reservations/ (creates booking)
    - POST /api/payments/card/initiate/ or /api/payments/bank-transfer/initiate/
    - POST /api/payments/verify/ (or webhook)
-   - GET /api/transactions/my-transactions/ /api/notifications/
+   - GET /api/transactions/my-transactions/, /api/notifications/
 
 4) Transport booking & payment
    - GET /api/transport/transport-options/ or /api/transport/search/
