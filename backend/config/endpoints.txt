@@ -171,7 +171,7 @@ System Flows (endpoint order)
    - POST /api/transport/transport-reservations/{id}/cancel/ (optional)
 
 5) Visa application flow
-   - (Optional) Complete flight booking + payment if providing flight_id (flight_id is optional; if provided it must reference a paid flight)
+   - Complete flight booking + payment to obtain flight_id for linking (optional)
    - POST /api/visas/visas/ (create application; include flight_id to link a paid flight)
    - Admin review:
        - POST /api/visas/visas/{id}/verify_documents/
