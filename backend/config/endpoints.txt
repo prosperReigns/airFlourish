@@ -5,8 +5,8 @@ Default auth: JWT Bearer (IsAuthenticated) unless noted.
 USER ENDPOINTS (regular users; admin also has access unless stated)
 Auth & profile
 - POST /api/users/register/ (public)
-- POST /api/token/ (public; JWT login endpoint is /api/token/, not /api/users/token/)
-- POST /api/token/refresh/ (public; JWT refresh endpoint is /api/token/refresh/)
+- POST /api/token/ (public; JWT login is /api/token/, not /api/users/token/)
+- POST /api/token/refresh/ (public; JWT refresh is /api/token/refresh/)
 - GET /api/users/profile/
 - PATCH /api/users/profile/
 - POST /api/users/logout/
@@ -120,7 +120,7 @@ Transport (admin management)
 - DELETE /api/transport/admin-transport-reservations/{id}/
 
 Visas (admin actions)
-- POST /api/visas/approve/{visa_id}/ (deprecated legacy combined approve/reject; no removal date set—prefer /api/visas/visas/{id}/approve/ or /reject/)
+- POST /api/visas/approve/{visa_id}/ (deprecated legacy combined approve/reject; removal timeline TBD—prefer /api/visas/visas/{id}/approve/ or /reject/)
 - POST /api/visas/visas/{id}/verify_documents/
 - POST /api/visas/visas/{id}/submit_to_embassy/
 - POST /api/visas/visas/{id}/approve/
