@@ -56,6 +56,7 @@ Transports
 - DELETE /api/transport/transport-reservations/{id}/
 - POST /api/transport/transport-reservations/{id}/cancel/
 - GET /api/transport/search/
+- Note: /transports/ creates a Booking (use when you want payment flow); /transport-reservations/ only creates a reservation record.
 
 Visas
 - GET /api/visas/visas/
@@ -119,7 +120,7 @@ Transport (admin management)
 - DELETE /api/transport/admin-transport-reservations/{id}/
 
 Visas (admin actions)
-- POST /api/visas/approve/{visa_id}/ (legacy combined approve/reject; uses action field in request body: approve or reject)
+- POST /api/visas/approve/{visa_id}/ (deprecated legacy combined approve/reject; uses action field in request body: approve or reject)
 - POST /api/visas/visas/{id}/verify_documents/
 - POST /api/visas/visas/{id}/submit_to_embassy/
 - POST /api/visas/visas/{id}/approve/
@@ -170,7 +171,7 @@ System Flows (endpoint order)
    - POST /api/transport/transport-reservations/{id}/cancel/ (optional)
 
 5) Visa application flow
-   - (Optional) Complete flight booking + payment if providing flight_id (server requires flight_id to reference a paid flight)
+   - (Optional) Complete flight booking + payment if providing flight_id (flight_id is optional; when provided, server requires it to reference a paid flight)
    - POST /api/visas/visas/ (create application; include flight_id to link a paid flight)
    - Admin review:
        - POST /api/visas/visas/{id}/verify_documents/
