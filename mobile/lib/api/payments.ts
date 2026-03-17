@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { apiClient } from "@/lib/api/client";
 
 export type Payment = {
   id: string;
@@ -38,24 +38,27 @@ export const createIdempotencyKey = () =>
 export const createTraceId = () =>
   `trace-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-export const listPayments = async (filters?: {
+export const listPaymentsRequest = async (filters?: {
   bookingId?: number | string;
   status?: string;
 }) => {
-  const response = await api.get<Payment[]>(PAYMENTS_PATH, {
+  const response = await apiClient.get<Payment[]>(PAYMENTS_PATH, {
     params: {
       booking_id: filters?.bookingId,
       status: filters?.status,
     },
   });
+
   return response.data;
 };
 
-export const initiateCardPayment = async (payload: CardPaymentInitPayload) => {
+export const initiateCardPaymentRequest = async (
+  payload: CardPaymentInitPayload,
+) => {
   const idempotencyKey = payload.idempotencyKey ?? createIdempotencyKey();
   const traceId = payload.traceId ?? createTraceId();
 
-  const response = await api.post<CardPaymentInitResponse>(
+  const response = await apiClient.post<CardPaymentInitResponse>(
     "payments/card/initiate/",
     {
       booking_id: payload.bookingId,

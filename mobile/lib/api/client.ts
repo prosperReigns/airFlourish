@@ -1,17 +1,17 @@
-import { useAuthStore } from "@/store/authStore";
 import axios from "axios";
+
+import { useAuth } from "@/hooks/use-auth";
 
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://192.168.0.200:8000/api/";
 
-const API = axios.create({
+const apiClient = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// Attach token automatically
-API.interceptors.request.use(
+apiClient.interceptors.request.use(
   (config) => {
-    const token = useAuthStore.getState().token;
+    const token = useAuth.getState().token;
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -24,12 +24,11 @@ API.interceptors.request.use(
 
 export const setAuthToken = (token: string | null) => {
   if (token) {
-    API.defaults.headers.common.Authorization = `Bearer ${token}`;
+    apiClient.defaults.headers.common.Authorization = `Bearer ${token}`;
     return;
   }
 
-  delete API.defaults.headers.common.Authorization;
+  delete apiClient.defaults.headers.common.Authorization;
 };
 
-export const api = API;
-export default API;
+export { apiClient };
