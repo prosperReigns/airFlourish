@@ -170,7 +170,7 @@ System Flows (endpoint order)
 
 5) Visa application flow
    - (Optional) Complete flight booking + payment if providing flight_id
-   - POST /api/visas/visas/ (create application)
+   - POST /api/visas/visas/ (create application; include flight_id to link a paid flight)
    - Admin review:
        - POST /api/visas/visas/{id}/verify_documents/
        - POST /api/visas/visas/{id}/submit_to_embassy/
