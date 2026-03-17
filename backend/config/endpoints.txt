@@ -5,8 +5,8 @@ Default auth: JWT Bearer (IsAuthenticated) unless noted.
 USER ENDPOINTS (regular users; admin also has access unless stated)
 Auth & profile
 - POST /api/users/register/ (public)
-- POST /api/token/ (public; JWT login endpoint is top-level, not under /api/users/)
-- POST /api/token/refresh/ (public; JWT refresh endpoint is top-level)
+- POST /api/token/ (public; JWT login endpoint is /api/token/, not /api/users/token/)
+- POST /api/token/refresh/ (public; JWT refresh endpoint is /api/token/refresh/)
 - GET /api/users/profile/
 - PATCH /api/users/profile/
 - POST /api/users/logout/
@@ -120,7 +120,7 @@ Transport (admin management)
 - DELETE /api/transport/admin-transport-reservations/{id}/
 
 Visas (admin actions)
-- POST /api/visas/approve/{visa_id}/ (deprecated legacy combined approve/reject; uses action field in request body: approve or reject)
+- POST /api/visas/approve/{visa_id}/ (deprecated legacy combined approve/reject; no removal date set—prefer /api/visas/visas/{id}/approve/ or /reject/)
 - POST /api/visas/visas/{id}/verify_documents/
 - POST /api/visas/visas/{id}/submit_to_embassy/
 - POST /api/visas/visas/{id}/approve/
@@ -171,7 +171,7 @@ System Flows (endpoint order)
    - POST /api/transport/transport-reservations/{id}/cancel/ (optional)
 
 5) Visa application flow
-   - (Optional) Complete flight booking + payment if providing flight_id (flight_id is optional; when provided, server requires it to reference a paid flight)
+   - (Optional) Complete flight booking + payment if providing flight_id (flight_id is optional; if provided it must reference a paid flight)
    - POST /api/visas/visas/ (create application; include flight_id to link a paid flight)
    - Admin review:
        - POST /api/visas/visas/{id}/verify_documents/
