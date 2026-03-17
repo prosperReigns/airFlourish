@@ -120,7 +120,7 @@ Transport (admin management)
 - DELETE /api/transport/admin-transport-reservations/{id}/
 
 Visas (admin actions)
-- POST /api/visas/approve/{visa_id}/ (deprecated legacy combined approve/reject; removal timeline TBD—prefer /api/visas/visas/{id}/approve/ or /reject/)
+- POST /api/visas/approve/{visa_id}/ (deprecated legacy combined approve/reject; no removal date announced—prefer /api/visas/visas/{id}/approve/ or /reject/)
 - POST /api/visas/visas/{id}/verify_documents/
 - POST /api/visas/visas/{id}/submit_to_embassy/
 - POST /api/visas/visas/{id}/approve/
@@ -171,7 +171,7 @@ System Flows (endpoint order)
    - POST /api/transport/transport-reservations/{id}/cancel/ (optional)
 
 5) Visa application flow
-   - Complete flight booking + payment to obtain flight_id for linking (optional)
+   - Optional: To link a visa to a flight, complete flight booking + payment to obtain flight_id
    - POST /api/visas/visas/ (create application; include flight_id to link a paid flight)
    - Admin review:
        - POST /api/visas/visas/{id}/verify_documents/
