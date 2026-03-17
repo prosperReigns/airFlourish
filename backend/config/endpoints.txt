@@ -38,7 +38,7 @@ Hotels
 - PATCH /api/hotels/hotel-reservations/{id}/
 - DELETE /api/hotels/hotel-reservations/{id}/
 
-Transport
+Transports
 - GET /api/transport/transport-options/
 - GET /api/transport/transport-options/{id}/
 - GET /api/transport/transports/
@@ -75,7 +75,7 @@ Payments
 - POST /api/payments/bank-transfer/initiate/
 - POST /api/payments/verify/
 
-Transactions & wallet
+Transactions & Wallet
 - GET /api/transactions/my-transactions/
 - GET /api/wallet/
 - GET /api/wallet/ledger/
@@ -134,7 +134,7 @@ Admin/Platform UI
 - /swagger.json or /swagger.yaml (OpenAPI schema)
 - /accounts/ (Django auth pages)
 
-SYSTEM FLOW (endpoint order)
+System Flows (endpoint order)
 
 1) Authentication
    - POST /api/users/register/ (optional, first-time)
