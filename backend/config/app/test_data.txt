@@ -1,30 +1,79 @@
-1️⃣ Users
-Admin user
+AirFlourish API Test Data
+Base URL: /api/
+Auth header: Authorization: Bearer <access_token>
+
+1) Auth & Profile
+POST /api/users/register/ (public)
 {
   "email": "admin@airflourish.com",
   "first_name": "Admin",
   "last_name": "User",
   "password": "Admin1234!",
   "user_type": "admin",
-  "phone_number": "08012345678",
-  "country": "Nigeria"
+  "phone_number": "+2348012345678",
+  "country": "NG"
 }
-Regular user
+POST /api/users/register/ (public)
 {
   "email": "john.doe@example.com",
   "first_name": "John",
   "last_name": "Doe",
   "password": "John1234!",
   "user_type": "regular",
-  "phone_number": "08098765432",
-  "country": "Nigeria"
+  "phone_number": "+2348098765432",
+  "country": "NG"
 }
-2️⃣ Flight Booking
+POST /api/token/ (public)
+{
+  "email": "john.doe@example.com",
+  "password": "John1234!"
+}
+POST /api/token/refresh/ (public)
+{
+  "refresh": "<refresh_token>"
+}
+GET /api/users/profile/
+PATCH /api/users/profile/
+{
+  "name": "John Updated",
+  "country": "NG",
+  "phone_number": "+2348098765432",
+  "church": "Christ Embassy",
+  "zone": "Zone 1"
+}
+POST /api/users/logout/
+{
+  "refresh": "<refresh_token>"
+}
+
+2) Bookings
+GET /api/bookings/bookings/
+POST /api/bookings/bookings/
+{
+  "service_type": "flight",
+  "status": "pending",
+  "total_price": 1200.00
+}
+GET /api/bookings/bookings/{id}/
+DELETE /api/bookings/bookings/{id}/
+PUT /api/bookings/bookings/{id}/ (admin)
+{
+  "status": "confirmed"
+}
+PATCH /api/bookings/bookings/{id}/ (admin)
+{
+  "status": "cancelled"
+}
+GET /api/bookings/flights/search/?origin=LOS&destination=LHR&departure_date=2026-05-12&return_date=2026-05-20&limit=5
+
+3) Flights
+GET /api/flights/flights/
+POST /api/flights/flights/
 {
   "departure_city": "Lagos",
   "arrival_city": "London",
-  "departure_date": "2026-03-15",
-  "return_date": "2026-03-25",
+  "departure_date": "2026-05-12",
+  "return_date": "2026-05-20",
   "airline": "British Airways",
   "passengers": 2,
   "flight_offer": {"offer_id": "FAKE-OFFER-123"},
@@ -35,77 +84,304 @@ Regular user
   "total_price": 1200.00,
   "currency": "USD"
 }
-3️⃣ Hotel
-Admin creates a hotel
+GET /api/flights/flights/{id}/
+PUT /api/flights/flights/{id}/
+{
+  "departure_city": "Lagos",
+  "arrival_city": "Paris",
+  "departure_date": "2026-05-12",
+  "airline": "Air France",
+  "passengers": 1
+}
+PATCH /api/flights/flights/{id}/
+{
+  "passengers": 3
+}
+DELETE /api/flights/flights/{id}/
+POST /api/flights/secure-book/
+{
+  "flight_offer": {"offer_id": "FAKE-OFFER-123"},
+  "travelers": [
+    {"first_name": "John", "last_name": "Doe", "age": 30, "passport_number": "A1234567"}
+  ],
+  "departure_city": "Lagos",
+  "arrival_city": "London",
+  "departure_date": "2026-05-12",
+  "return_date": "2026-05-20",
+  "airline": "British Airways",
+  "passengers": 1
+}
+POST /api/flights/verify-payment/
+{
+  "tx_ref": "TX-FLIGHT-123456",
+  "flight_offer": {"offer_id": "FAKE-OFFER-123"},
+  "travelers": [
+    {"first_name": "John", "last_name": "Doe", "age": 30, "passport_number": "A1234567"}
+  ],
+  "departure_city": "Lagos",
+  "arrival_city": "London",
+  "departure_date": "2026-05-12",
+  "airline": "British Airways",
+  "passengers": 1
+}
+
+4) Hotels (user)
+GET /api/hotels/hotels/?city=Lagos&check_in=2026-05-12&check_out=2026-05-15&guests=2
+GET /api/hotels/hotels/{id}/
+GET /api/hotels/hotel-reservations/
+POST /api/hotels/hotel-reservations/
+{
+  "hotel_id": 1,
+  "check_in": "2026-05-12",
+  "check_out": "2026-05-15",
+  "guests": 2
+}
+GET /api/hotels/hotel-reservations/{id}/
+PUT /api/hotels/hotel-reservations/{id}/
+{
+  "check_in": "2026-05-13",
+  "check_out": "2026-05-16",
+  "guests": 3
+}
+PATCH /api/hotels/hotel-reservations/{id}/
+{
+  "guests": 1
+}
+DELETE /api/hotels/hotel-reservations/{id}/
+
+5) Hotels (admin)
+GET /api/hotels/admin-hotels/
+POST /api/hotels/admin-hotels/
 {
   "hotel_name": "Airflourish Hotel",
   "city": "Lagos",
   "address": "1 Christ Embassy Way",
+  "country": "NG",
   "price_per_night": 500.00,
   "currency": "NGN",
+  "available_rooms": 20,
   "images": ["https://placekitten.com/400/300"],
-  "description": "Luxury hotel with free breakfast"
+  "description": "Luxury hotel with free breakfast",
+  "facilities": ["wifi", "pool"]
 }
-User books hotel
+GET /api/hotels/admin-hotels/{id}/
+PUT /api/hotels/admin-hotels/{id}/
 {
-  "hotel_id": 1,
-  "check_in": "2026-03-15",
-  "check_out": "2026-03-20",
-  "adults": 2,
-  "rooms": 1
+  "hotel_name": "Airflourish Hotel Updated",
+  "city": "Lagos",
+  "country": "NG",
+  "price_per_night": 550.00
 }
-4️⃣ Transport
-Admin creates transport
+PATCH /api/hotels/admin-hotels/{id}/
 {
-  "transport_name": "Airflourish Van",
+  "available_rooms": 18
+}
+DELETE /api/hotels/admin-hotels/{id}/
+POST /api/hotels/admin-hotels/create_hotel/ (legacy)
+{
+  "hotel_name": "Legacy Hotel",
+  "city": "Abuja",
+  "address": "10 Unity Rd",
+  "country": "NG",
+  "price_per_night": 450.00,
+  "currency": "NGN",
+  "available_rooms": 12
+}
+GET /api/hotels/admin-hotels/get_hotel/{hotel_id}/ (legacy)
+GET /api/hotels/admin-hotels/get_all_hotels/ (legacy)
+
+6) Transports (user)
+GET /api/transport/transport-options/
+GET /api/transport/transport-options/{id}/
+GET /api/transport/transports/
+POST /api/transport/transports/ (creates booking)
+{
+  "transport_id": 1,
+  "passengers": 2,
+  "special_requests": "Need child seat"
+}
+GET /api/transport/transports/{id}/
+PUT /api/transport/transports/{id}/
+{
+  "passengers": 3,
+  "special_requests": "Extra luggage"
+}
+PATCH /api/transport/transports/{id}/
+{
+  "special_requests": "Window seat"
+}
+DELETE /api/transport/transports/{id}/
+GET /api/transport/transport-reservations/
+POST /api/transport/transport-reservations/ (reservation only)
+{
+  "transport_id": 1,
+  "passengers": 2,
+  "special_requests": "Need wheelchair access"
+}
+GET /api/transport/transport-reservations/{id}/
+PUT /api/transport/transport-reservations/{id}/
+{
+  "transport_id": 1,
+  "passengers": 4
+}
+PATCH /api/transport/transport-reservations/{id}/
+{
+  "special_requests": "Pickup with sign"
+}
+DELETE /api/transport/transport-reservations/{id}/
+POST /api/transport/transport-reservations/{id}/cancel/
+GET /api/transport/search/?pickup=Lagos&dropoff=Victoria&vehicle_type=sedan
+
+7) Transports (admin)
+GET /api/transport/admin-transports/
+POST /api/transport/admin-transports/
+{
   "vehicle_type": "van",
+  "transport_name": "Airflourish Van",
   "pickup_location": "Lagos Airport",
   "dropoff_location": "Victoria Island",
   "price_per_passenger": 2000.00,
   "currency": "NGN"
 }
-User books transport
+GET /api/transport/admin-transports/{id}/
+PUT /api/transport/admin-transports/{id}/
 {
-  "transport_id": 1,
-  "passengers": 3,
-  "special_requests": "Need child seat"
+  "price_per_passenger": 2500.00
 }
-Transport search
-GET /transports/search/?pickup=Lagos&dropoff=Victoria&date=2026-03-15
-5️⃣ Visa
-User applies for visa
+PATCH /api/transport/admin-transports/{id}/
 {
-  "flight": 1,
+  "transport_name": "Airflourish Van XL"
+}
+DELETE /api/transport/admin-transports/{id}/
+GET /api/transport/admin-transport-reservations/
+POST /api/transport/admin-transport-reservations/
+{
+  "service": 1,
+  "passengers_count": 1,
+  "special_requests": "VIP pickup"
+}
+GET /api/transport/admin-transport-reservations/{id}/
+PUT /api/transport/admin-transport-reservations/{id}/
+{
+  "service": 1,
+  "passengers_count": 2
+}
+PATCH /api/transport/admin-transport-reservations/{id}/
+{
+  "special_requests": "VIP"
+}
+DELETE /api/transport/admin-transport-reservations/{id}/
+
+8) Visas (user)
+GET /api/visas/visas/
+POST /api/visas/visas/
+{
+  "flight_id": 1,
   "destination_country": "United Kingdom",
   "visa_type": "Tourist",
-  "appointment_date": "2026-03-10",
+  "appointment_date": "2026-05-01",
   "passport_scan": null,
   "photo": null,
-  "supporting_docs": null
+  "supporting_docs": null,
+  "visa_fee": 200.00,
+  "currency": "USD"
 }
-Admin approves visa
-POST /visas/approve/1/
+GET /api/visas/visas/{id}/
+PUT /api/visas/visas/{id}/
+{
+  "destination_country": "United Kingdom",
+  "visa_type": "Business",
+  "appointment_date": "2026-05-02"
+}
+PATCH /api/visas/visas/{id}/
+{
+  "visa_type": "Tourist"
+}
+DELETE /api/visas/visas/{id}/
+
+9) Visas (admin)
+POST /api/visas/approve/{visa_id}/ (legacy)
 {
   "action": "approve"
 }
-Admin rejects visa
-POST /visas/approve/2/
+POST /api/visas/approve/{visa_id}/ (legacy)
 {
   "action": "reject"
 }
-6️⃣ Payment
+POST /api/visas/visas/{id}/verify_documents/
+POST /api/visas/visas/{id}/submit_to_embassy/
+POST /api/visas/visas/{id}/approve/
+POST /api/visas/visas/{id}/reject/
+
+10) Payments (user/admin)
+GET /api/payments/payments/
+POST /api/payments/payments/
 {
   "booking": 1,
-  "tx_ref": "TX1234567890",
   "amount": 1200.00,
   "currency": "USD",
-  "payment_method": "Card",
-  "transaction_id": "TRX987654321",
-  "status": "pending",
-  "raw_response": {"payment_gateway": "Flutterwave"}
+  "payment_method": "card",
+  "tx_ref": "TX1234567890"
 }
-7️⃣ Booking cancellation
-POST /bookings/cancel/1/
+GET /api/payments/payments/{id}/
+PUT /api/payments/payments/{id}/
 {
-  "reason": "Change of plans"
+  "amount": 1300.00,
+  "currency": "USD",
+  "payment_method": "card",
+  "tx_ref": "TX1234567890"
 }
+PATCH /api/payments/payments/{id}/
+{
+  "amount": 1250.00
+}
+DELETE /api/payments/payments/{id}/
+POST /api/payments/card/initiate/
+Headers: Idempotency-Key: idem-123, X-Trace-Id: trace-123
+{
+  "booking_id": 1,
+  "amount": 1200.00,
+  "currency": "USD",
+  "tx_ref": "TX-CARD-123"
+}
+POST /api/payments/bank-transfer/initiate/
+Headers: Idempotency-Key: idem-456, X-Trace-Id: trace-456
+{
+  "booking_id": 1,
+  "amount": 1200.00,
+  "currency": "USD"
+}
+POST /api/payments/verify/
+{
+  "tx_ref": "TX-CARD-123"
+}
+
+11) Public payment callbacks
+POST /api/payments/webhook/flutterwave/ (public)
+Headers: verif-hash: <flutterwave_secret_hash>
+{
+  "id": 123456,
+  "txRef": "TX-CARD-123",
+  "amount": 1200.00,
+  "currency": "USD",
+  "status": "successful"
+}
+GET /api/payments/redirect/?tx_ref=TX-CARD-123&status=successful
+
+12) Transactions & Wallet
+GET /api/transactions/my-transactions/
+GET /api/transactions/admin/transactions/ (admin)
+GET /api/wallet/
+GET /api/wallet/ledger/
+
+13) Notifications
+GET /api/notifications/
+POST /api/notifications/read/{notification_id}/
+
+14) Admin/Platform UI (no body)
+GET /admin/
+GET /swagger/
+GET /redoc/
+GET /swagger.json
+GET /swagger.yaml
+GET /accounts/
