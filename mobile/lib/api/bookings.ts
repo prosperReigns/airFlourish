@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { apiClient } from "@/lib/api/client";
 
 export type Booking = {
   id: number;
@@ -14,12 +14,12 @@ export type Booking = {
 
 const BOOKINGS_PATH = "bookings/bookings/";
 
-export const listBookings = async () => {
-  const response = await api.get<Booking[]>(BOOKINGS_PATH);
+export const listBookingsRequest = async () => {
+  const response = await apiClient.get<Booking[]>(BOOKINGS_PATH);
   return response.data;
 };
 
-export const getBooking = async (bookingId: number | string) => {
-  const response = await api.get<Booking>(`${BOOKINGS_PATH}${bookingId}/`);
+export const getBookingRequest = async (bookingId: number | string) => {
+  const response = await apiClient.get<Booking>(`${BOOKINGS_PATH}${bookingId}/`);
   return response.data;
 };

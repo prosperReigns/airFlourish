@@ -1,14 +1,14 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
-import { View, ActivityIndicator } from "react-native";
-import { useAuthStore } from "@/store/authStore";
+import { ActivityIndicator, View } from "react-native";
 
-export default function RootLayout() {
+import { QueryProvider } from "@/components/providers/query-provider";
+import { useAuth } from "@/hooks/use-auth";
+
+function AppRouter() {
   const router = useRouter();
   const segments = useSegments();
-
-  const { token, loading, restoreSession } = useAuthStore();
-  const authenticated = Boolean(token);
+  const { token, loading, restoreSession } = useAuth();
 
   useEffect(() => {
     restoreSession();
@@ -18,15 +18,16 @@ export default function RootLayout() {
     if (loading) return;
 
     const inAuthGroup = segments[0] === "(auth)";
+    const isAuthenticated = Boolean(token);
 
-    if (!authenticated && !inAuthGroup) {
+    if (!isAuthenticated && !inAuthGroup) {
       router.replace("/(auth)/login");
     }
 
-    if (authenticated && inAuthGroup) {
+    if (isAuthenticated && inAuthGroup) {
       router.replace("/(tabs)");
     }
-  }, [authenticated, loading, router, segments]);
+  }, [loading, router, segments, token]);
 
   if (loading) {
     return (
@@ -37,4 +38,12 @@ export default function RootLayout() {
   }
 
   return <Stack screenOptions={{ headerShown: false }} />;
+}
+
+export default function RootLayout() {
+  return (
+    <QueryProvider>
+      <AppRouter />
+    </QueryProvider>
+  );
 }

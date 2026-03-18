@@ -2,8 +2,20 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { create } from "zustand";
-import { login as authLogin, logout as authLogout } from "../services/auth";
-import { setAuthToken } from "../services/api";
+
+import { loginRequest, logoutRequest } from "@/lib/api/auth";
+import { setAuthToken } from "@/lib/api/client";
+import type { AuthUser } from "@/lib/api/auth";
+
+type AuthState = {
+  user: AuthUser | null;
+  token: string | null;
+  refreshToken: string | null;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<string>;
+  logout: () => Promise<void>;
+  restoreSession: () => Promise<void>;
+};
 
 const storage = {
   getItem: async (key: string) =>
@@ -20,25 +32,14 @@ const storage = {
       : SecureStore.deleteItemAsync(key),
 };
 
-interface AuthState {
-  user: any;
-  token: string | null;
-  refreshToken: string | null;
-  loading: boolean;
-
-  login: (email: string, password: string) => Promise<string>;
-  logout: () => Promise<void>;
-  restoreSession: () => Promise<void>;
-}
-
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   token: null,
   refreshToken: null,
   loading: true,
 
   login: async (email, password) => {
-    const session = await authLogin(email, password);
+    const session = await loginRequest(email, password);
     const token = session.access;
     const refreshToken = session.refresh ?? null;
 
@@ -68,11 +69,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     const refreshToken = get().refreshToken;
+
     try {
-      await authLogout(refreshToken);
+      await logoutRequest(refreshToken);
     } catch (error) {
       console.log(error);
     }
+
     await storage.deleteItem("token");
     await storage.deleteItem("refresh_token");
     setAuthToken(null);
@@ -82,6 +85,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   restoreSession: async () => {
     const token = await storage.getItem("token");
     const refreshToken = await storage.getItem("refresh_token");
+
     if (token) {
       setAuthToken(token);
       set({ token, refreshToken: refreshToken ?? null });
