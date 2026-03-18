@@ -34,6 +34,7 @@ class HotelReservation(models.Model):
         default="pending",
     )
     total_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    hold_expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

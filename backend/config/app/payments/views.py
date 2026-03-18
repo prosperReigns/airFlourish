@@ -2,6 +2,7 @@ import hmac
 
 from django.utils.decorators import method_decorator
 from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
 from .models import Payment
 from .serializers import PaymentSerializer
 from app.services.flutterwave import FlutterwaveService
@@ -18,6 +19,7 @@ from app.payments.services import PaymentVerificationService
 from app.transactions.services import get_or_create_transaction, mark_transaction_failed
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from app.users.permissions import IsAdminUserType
 
 
 def _signature_to_bytes(value):
@@ -114,6 +116,42 @@ class PaymentViewSet(viewsets.ModelViewSet):
         if getattr(user, "user_type", None) == "admin":
             return Payment.objects.all()
         return Payment.objects.filter(booking__user=user)
+
+    @action(detail=False, methods=["post"], url_path="replay", permission_classes=[IsAuthenticated, IsAdminUserType])
+    @swagger_auto_schema(
+        operation_description="Replay a payment booking flow by tx_ref (admin only).",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["tx_ref"],
+            properties={
+                "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
+            },
+        ),
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "message": openapi.Schema(type=openapi.TYPE_STRING),
+                    "payment_id": openapi.Schema(type=openapi.TYPE_STRING),
+                },
+            ),
+            404: "Payment not found",
+        },
+    )
+    def replay(self, request):
+        tx_ref = request.data.get("tx_ref")
+        if not tx_ref:
+            return Response({"error": "tx_ref is required"}, status=400)
+
+        payment = Payment.objects.filter(tx_ref=tx_ref).first()
+        if not payment:
+            return Response({"error": "Payment not found"}, status=404)
+
+        process_successful_payment.delay(str(payment.id))
+        return Response(
+            {"message": "Replay queued", "payment_id": str(payment.id)},
+            status=200,
+        )
 
 
 # --- Flutterwave Webhook ---

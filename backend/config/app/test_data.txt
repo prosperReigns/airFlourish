@@ -70,22 +70,6 @@ GET /api/bookings/flights/search/?origin=LOS&destination=LHR&departure_date=2026
 3. Flights
 GET /api/flights/flights/ -- empty
 
-POST /api/flights/flights/ -- removed
-{
-  "departure_city": "Lagos",
-  "arrival_city": "London",
-  "departure_date": "2026-05-12",
-  "return_date": "2026-05-20",
-  "airline": "British Airways",
-  "passengers": 2,
-  "flight_offer": {"offer_id": "FAKE-OFFER-123"},
-  "travelers": [
-    {"first_name": "John", "last_name": "Doe", "age": 30, "passport_number": "A1234567"},
-    {"first_name": "Jane", "last_name": "Doe", "age": 28, "passport_number": "B9876543"}
-  ],
-  "total_price": 1200.00,
-  "currency": "USD"
-}
 GET /api/flights/flights/{id}/
 PUT /api/flights/flights/{id}/
 {
@@ -104,43 +88,48 @@ DELETE /api/flights/flights/{id}/
 -- search for flight using amadeus -- working
 http://127.0.0.1:8000/api/flights/search-flights/?origin=LOS&destination=LHR&departure_date=2026-05-12
 
--- book hotel -- working
+-- book flight -- working
 POST /api/flights/secure-book/
 {
-  "selected_flight_id": "1",
+  "selected_flight_id": "2",
   "travelers": [
-    {"first_name": "John", "last_name": "Doe", "age": 30, "passport_number": "A1234567"}
+    {
+      "first_name": "John",
+      "last_name": "Doe",
+      "dob": "1994-01-01",
+      "gender": "MALE",
+      "email": "john@example.com",
+      "passport_number": "A1234567",
+      "passport_expiry": "2030-01-01",
+      "passport_country": "NG",
+      "nationality": "NG"
+    }
   ]
 }
 
-POST /api/flights/verify-payment/
-{
-  "tx_ref": "TX-FLIGHT-123456",
-  "flight_offer": {"offer_id": "FAKE-OFFER-123"},
-  "travelers": [
-    {"first_name": "John", "last_name": "Doe", "age": 30, "passport_number": "A1234567"}
-  ],
-  "departure_city": "Lagos",
-  "arrival_city": "London",
-  "departure_date": "2026-05-12",
-  "airline": "British Airways",
-  "passengers": 1
-}
+-- repay failed flight
+POST /api/payments/replay/ (admin only)
+{ "tx_ref": "PAY-..." }
+
 
 4. Hotels (user)
 GET /api/hotels/hotels/?city=Lagos&check_in=2026-05-12&check_out=2026-05-15&guests=2  -- working
 
-GET /api/hotels/hotels/{id}/ -- working
+GET /api/hotels/hotel/{id}/ -- working
 
-GET /api/hotels/hotel-reservations/ -- working
-POST /api/hotels/hotel-reservations/ -- working
+GET /api/hotels/reservations/ -- working
+POST /api/hotels/book-secure/ -- working
 {
   "hotel_id": 1,
   "check_in": "2026-05-12",
   "check_out": "2026-05-15",
   "guests": 2
 }
-GET /api/hotels/hotel-reservations/{id}/ -- working
+POST /api/hotels/hotel-reservation/
+
+POST /api/hotels/checkout/
+
+GET /api/hotels/reservations/{id}/ -- working
 PUT /api/hotels/hotel-reservations/{id}/
 {
   "check_in": "2026-05-13",

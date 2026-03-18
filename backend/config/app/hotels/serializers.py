@@ -24,9 +24,10 @@ class HotelReservationSerializer(serializers.ModelSerializer):
             "guests",
             "status",
             "total_price",
+            "hold_expires_at",
             "created_at",
         ]
-        read_only_fields = ["user"]
+        read_only_fields = ["user", "hold_expires_at"]
 
 class HotelSerializer(serializers.ModelSerializer):
         """Serializer for hotels. This serializer is used for listing and retrieving hotel information. The country field is represented as a nested object with code and name.
