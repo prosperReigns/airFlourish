@@ -138,14 +138,14 @@ Admin/Platform UI
 
 System Flows (endpoint order)
 
-1) Authentication
+1. Authentication
    - POST /api/users/register/ (optional, first-time)
    - POST /api/token/ → access/refresh tokens
    - Use Bearer token for protected endpoints
    - POST /api/token/refresh/ when access expires
    - POST /api/users/logout/ to revoke refresh token
 
-2) Flight booking & payment
+2. Flight booking & payment
    - GET /api/bookings/flights/search/ (flight offers)
    - POST /api/flights/secure-book/ (creates booking and returns a payment link)
      OR
@@ -155,14 +155,14 @@ System Flows (endpoint order)
    - POST /api/flights/verify-payment/ or /api/payments/verify/ (if webhook not used)
    - GET /api/transactions/my-transactions/, /api/wallet/ledger/, /api/notifications/
 
-3) Hotel booking & payment
+3. Hotel booking & payment
    - GET /api/hotels/hotels/ (browse)
    - POST /api/hotels/hotel-reservations/ (creates booking)
    - POST /api/payments/card/initiate/ or /api/payments/bank-transfer/initiate/
    - POST /api/payments/verify/ (or webhook)
    - GET /api/transactions/my-transactions/, /api/notifications/
 
-4) Transport booking & payment
+4. Transport booking & payment
    - GET /api/transport/transport-options/ or /api/transport/search/
    - POST /api/transport/transports/ (book transport and create Booking)
      OR
@@ -170,7 +170,7 @@ System Flows (endpoint order)
    - Payment flow same as above
    - POST /api/transport/transport-reservations/{id}/cancel/ (optional)
 
-5) Visa application flow
+5. Visa application flow
    - Optional: To link a visa to a flight, complete flight booking + payment to obtain flight_id
    - POST /api/visas/visas/ (create application; include flight_id to link a paid flight)
    - Admin review:

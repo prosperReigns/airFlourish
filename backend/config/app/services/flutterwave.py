@@ -19,7 +19,15 @@ class FlutterwaveService:
     # -------------------------
     # INITIATE CARD PAYMENT
     # -------------------------
-    def initiate_card_payment(self, amount, currency, customer_email, tx_ref):
+    def initiate_card_payment(
+        self,
+        amount,
+        currency,
+        customer_email,
+        tx_ref,
+        payment_options="card",
+        bank_transfer_expires=None,
+    ):
         """Initiates a card payment with Flutterwave. This method sends a POST request to the Flutterwave API to create a new payment transaction. The amount, currency, customer email, and transaction reference are required parameters. The method returns the response from Flutterwave, which includes the payment link for the customer to complete the payment.
         Expected input:
         {
@@ -36,10 +44,12 @@ class FlutterwaveService:
             "tx_ref": tx_ref,
             "amount": str(amount),
             "currency": currency,
-            "payment_options": "card",
+            "payment_options": payment_options,
             "customer": {"email": customer_email},
             "redirect_url": settings.PAYMENT_REDIRECT_URL,
         }
+        if bank_transfer_expires is not None:
+            payload["bank_transfer_options"] = {"expires": int(bank_transfer_expires)}
 
         response = requests.post(
             url,
@@ -71,6 +81,34 @@ class FlutterwaveService:
             timeout=30
         )
 
+        return self._handle_response(response)
+
+    # -------------------------
+    # CREATE VIRTUAL ACCOUNT (BANK TRANSFER)
+    # -------------------------
+    def create_virtual_account(self, amount, currency, customer_email, tx_ref):
+        """Creates a dynamic virtual account for bank transfer collections.
+        Expected input:
+        {
+            "amount": 100.00,
+            "currency": "NGN",
+            "customer_email": "customer@example.com",
+            "tx_ref": "unique_transaction_reference"
+        }
+        """
+        url = f"{self.BASE_URL}/virtual-account-numbers"
+        payload = {
+            "email": customer_email,
+            "amount": str(amount),
+            "currency": currency,
+            "tx_ref": tx_ref,
+        }
+        response = requests.post(
+            url,
+            json=payload,
+            headers=self.headers,
+            timeout=30
+        )
         return self._handle_response(response)
 
     # -------------------------

@@ -1,5 +1,6 @@
 from rest_framework.routers import DefaultRouter
 from django.urls import path
+from app.payments.views import PaymentVerificationView
 
 from .views import AdminTransportViewSet, TransportBookingViewSet, TransportSearchView, TransportViewSet, TransportReservationViewSet,AdminTransportReservationViewSet
 
@@ -12,4 +13,5 @@ router.register(r'admin-transport-reservations', AdminTransportReservationViewSe
 
 urlpatterns = router.urls + [
     path("search/", TransportSearchView.as_view(), name="transport-search"),
+    path("verify-payment/", PaymentVerificationView.as_view(), name="transport-verify-payment"),
 ]

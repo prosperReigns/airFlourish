@@ -40,7 +40,12 @@ def merge_payment_metadata(
 
 def normalize_verification_payload(payload, source):
     if source == "webhook":
-        return {"status": "success", "data": payload or {}}
+        if isinstance(payload, dict):
+            data = payload.get("data")
+            if isinstance(data, dict):
+                return {"status": "success", "data": data}
+            return {"status": "success", "data": payload}
+        return {"status": "success", "data": {}}
     if isinstance(payload, dict):
         return payload
     return {}
@@ -105,6 +110,18 @@ class PaymentVerificationService:
         if not isinstance(verification_data, dict):
             verification_data = {}
 
+        payment_type = verification_data.get("payment_type")
+        if isinstance(payment_type, str):
+            payment_type = payment_type.lower()
+            method_map = {
+                "bank_transfer": "bank_transfer",
+                "banktransfer": "bank_transfer",
+                "card": "card",
+            }
+            mapped_method = method_map.get(payment_type)
+            if mapped_method and payment.payment_method != mapped_method:
+                payment.payment_method = mapped_method
+
         verified_amount = parse_verification_amount(
             verification_data.get("amount"), tx_ref=payment.tx_ref
         )
@@ -135,6 +152,8 @@ class PaymentVerificationService:
             payment.paid_at = timezone.now()
         payment.raw_response = raw_response
         update_fields = ["status", "raw_response", "paid_at"]
+        if payment.payment_method in ["card", "bank_transfer"]:
+            update_fields.append("payment_method")
         if charge_id is not None:
             update_fields.append("flutterwave_charge_id")
         payment.save(update_fields=update_fields)

@@ -171,6 +171,18 @@ AMADEUS_API_SECRET = os.getenv("AMADEUS_API_SECRET")
 BOOKING_RAPIDAPI_KEY = os.getenv("BOOKING_RAPIDAPI_KEY")
 BOOKING_RAPIDAPI_HOST = os.getenv("BOOKING_RAPIDAPI_HOST")
 
+# Currency settings
+# Map country codes to preferred display/charge currency.
+COUNTRY_CURRENCY_MAP = {
+    "NG": "NGN",
+}
+# Flutterwave bank transfer support is currency-limited (e.g., NGN/GHS).
+BANK_TRANSFER_SUPPORTED_CURRENCIES = ["NGN", "GHS"]
+
+# Cache settings (flight search/payment context)
+FLIGHT_OFFER_CACHE_TTL = 60 * 60  # 1 hour
+FLIGHT_PAYMENT_CONTEXT_TTL = 6 * 60 * 60  # 6 hours
+
 # Celery
 CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']

@@ -197,7 +197,9 @@ class FlutterwaveWebhookView(APIView):
             return Response({"error": "Invalid signature"}, status=400)
 
         data = request.data
-        tx_ref = data.get("txRef")
+        tx_ref = data.get("tx_ref") or data.get("txRef")
+        if not tx_ref and isinstance(data.get("data"), dict):
+            tx_ref = data["data"].get("tx_ref") or data["data"].get("txRef")
         if not tx_ref:
             return Response({"error": "txRef missing"}, status=400)
 

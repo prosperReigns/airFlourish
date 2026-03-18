@@ -1,5 +1,6 @@
 from decimal import Decimal
 from datetime import date, timedelta
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
@@ -7,6 +8,23 @@ from rest_framework.test import APIClient
 from app.bookings.models import Booking
 from app.transport.models import TransportService, TransportReservation
 from app.transport.serializers import TransportServiceSerializer, TransportSerializer, TransportReservationSerializer
+
+
+_FW_PATCH = patch(
+    "app.transport.views.FlutterwaveService.initiate_card_payment",
+    return_value={
+        "status": "success",
+        "data": {"link": "https://example.com/pay"},
+    },
+)
+
+
+def setUpModule():
+    _FW_PATCH.start()
+
+
+def tearDownModule():
+    _FW_PATCH.stop()
 
 
 class TransportFlowTests(TestCase):
@@ -1309,4 +1327,3 @@ class TransportRateLimitingTests(BaseTransportTestCase):
         second = self.client.post("/api/transport/transport-reservations/", payload, format="json")
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 429)
-

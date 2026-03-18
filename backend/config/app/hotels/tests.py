@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -17,6 +18,15 @@ class BaseHotelTestCase(TestCase):
         cache.clear()
         self.client = APIClient()
         self.User = get_user_model()
+        self._fw_patch = patch(
+            "app.hotels.views.FlutterwaveService.initiate_card_payment",
+            return_value={
+                "status": "success",
+                "data": {"link": "https://example.com/pay"},
+            },
+        )
+        self._fw_patch.start()
+        self.addCleanup(self._fw_patch.stop)
 
     def create_user(self, **overrides):
         defaults = {

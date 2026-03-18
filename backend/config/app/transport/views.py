@@ -1,17 +1,57 @@
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils.decorators import method_decorator
 from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
+from django.conf import settings
 from rest_framework.decorators import action
 
 from app.services.booking_engine import BookingEngine
+from app.services.flutterwave import FlutterwaveService
+from app.services.reference_generator import generate_booking_reference
+from app.payments.models import Payment
+from app.transactions.services import get_or_create_transaction
+from app.pricing.services import convert_currency
+from app.pricing.models import ExchangeRate
 from .models import TransportService, TransportReservation
 from .serializers import TransportServiceSerializer, TransportReservationSerializer
 from .permissions import IsAdminUserType
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
+def _get_country_code(user):
+    country = getattr(user, "country", None)
+    if hasattr(country, "code"):
+        return country.code
+    if country:
+        return str(country)
+    return None
+
+def _get_user_currency(user, fallback_currency):
+    country_code = _get_country_code(user)
+    currency_map = getattr(settings, "COUNTRY_CURRENCY_MAP", {})
+    return currency_map.get(country_code, fallback_currency)
+
+def _to_decimal(value):
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+def _quantize_amount(value):
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+def _convert_amount(amount, base_currency, target_currency):
+    if amount is None:
+        return None
+    if base_currency == target_currency:
+        return amount
+    try:
+        return convert_currency(amount, base_currency, target_currency)
+    except ExchangeRate.DoesNotExist:
+        return None
 
 @method_decorator(
     name="list",
@@ -258,10 +298,24 @@ class AdminTransportViewSet(viewsets.ModelViewSet):
                                           "transport_id": openapi.Schema(type=openapi.TYPE_INTEGER),
                                           "passengers": openapi.Schema(type=openapi.TYPE_INTEGER),
                                           "special_requests": openapi.Schema(type=openapi.TYPE_STRING),
+                                          "payment_method": openapi.Schema(
+                                              type=openapi.TYPE_STRING,
+                                              description="Optional: card or bank_transfer. Omit to show both on hosted page.",
+                                          ),
                                       }
                                   ),
                                     responses={
-                                        201: "Transport booking created successfully",
+                                        201: openapi.Schema(
+                                            type=openapi.TYPE_OBJECT,
+                                            properties={
+                                                "payment_link": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "booking_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                "transport_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                                "payment_options": openapi.Schema(type=openapi.TYPE_STRING),
+                                                "bank_transfer_available": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                                            },
+                                        ),
                                         400: "Invalid input data",
                                         404: "Transport not found"
                                     }
@@ -363,11 +417,13 @@ class TransportBookingViewSet(viewsets.ModelViewSet):
         {
             "transport_id": 1,
             "passengers": 2,
-            "special_requests": "Need a child seat"
+            "special_requests": "Need a child seat",
+            "payment_method": "card" // optional: card or bank_transfer
         }
         """
         data = request.data
         transport_id = data.get("transport_id")
+        payment_method = (data.get("payment_method") or "").lower().strip()
 
         if not transport_id:
             return Response({"error": "transport_id is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -384,13 +440,63 @@ class TransportBookingViewSet(viewsets.ModelViewSet):
         if passengers < 1:
             return Response({"error": "passengers must be at least 1"}, status=status.HTTP_400_BAD_REQUEST)
 
+        if payment_method and payment_method not in {"card", "bank_transfer"}:
+            return Response(
+                {"error": "payment_method must be 'card' or 'bank_transfer'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         total_price = transport.price_per_passenger * passengers
+        base_currency = transport.currency or "NGN"
+        amount = _to_decimal(total_price)
+        if not amount:
+            return Response(
+                {"error": "Unable to determine transport price"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        target_currency = _get_user_currency(request.user, base_currency)
+        converted_amount = _convert_amount(amount, base_currency, target_currency)
+        conversion_applied = True
+        if converted_amount is None:
+            converted_amount = amount
+            target_currency = base_currency
+            conversion_applied = False
+
+        confirmed_price = _quantize_amount(converted_amount)
+
+        supported_bank_currencies = set(
+            getattr(settings, "BANK_TRANSFER_SUPPORTED_CURRENCIES", ["NGN"])
+        )
+        bank_transfer_available = target_currency in supported_bank_currencies
+
+        payment_options = "card,banktransfer"
+        if not bank_transfer_available:
+            payment_options = "card"
+        if payment_method == "card":
+            payment_options = "card"
+        elif payment_method == "bank_transfer":
+            payment_options = "banktransfer" if bank_transfer_available else "card"
+
+        tx_ref = generate_booking_reference("pay")
+        payment_response = FlutterwaveService().initiate_card_payment(
+            amount=confirmed_price,
+            currency=target_currency,
+            customer_email=request.user.email,
+            tx_ref=tx_ref,
+            payment_options=payment_options,
+        )
+        if payment_response.get("status") == "error":
+            return Response(
+                {"error": "Payment initiation failed", "details": payment_response.get("message")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         booking = BookingEngine.create_booking(
             user=request.user,
             service_type="transport",
-            total_price=total_price,
-            currency=transport.currency,
+            total_price=confirmed_price,
+            currency=target_currency,
             external_service_id=transport.id,
         )
 
@@ -399,8 +505,48 @@ class TransportBookingViewSet(viewsets.ModelViewSet):
         transport.special_requests = data.get("special_requests", "")
         transport.save()
 
-        serializer = self.get_serializer(transport)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        meta = {
+            "transport_id": transport.id,
+            "transport_name": transport.transport_name,
+            "passengers": passengers,
+            "special_requests": transport.special_requests,
+            "pickup_location": transport.pickup_location,
+            "dropoff_location": transport.dropoff_location,
+            "original_price": str(total_price),
+            "original_currency": base_currency,
+            "converted_price": str(confirmed_price),
+            "converted_currency": target_currency,
+            "conversion_applied": conversion_applied,
+        }
+
+        Payment.objects.create(
+            booking=booking,
+            tx_ref=tx_ref,
+            amount=confirmed_price,
+            currency=target_currency,
+            payment_method=payment_method or "card",
+            status="pending",
+            raw_response={"meta": meta},
+        )
+
+        get_or_create_transaction(
+            booking=booking,
+            reference=tx_ref,
+            amount=confirmed_price,
+            currency=target_currency,
+        )
+
+        return Response(
+            {
+                "payment_link": payment_response.get("data", {}).get("link"),
+                "tx_ref": tx_ref,
+                "booking_id": booking.id,
+                "transport_id": transport.id,
+                "payment_options": payment_options,
+                "bank_transfer_available": bank_transfer_available,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 #/transport-search/
 class TransportSearchView(APIView):

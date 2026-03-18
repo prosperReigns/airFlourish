@@ -2,7 +2,7 @@ AirFlourish API Test Data
 Base URL: /api/
 Auth header: Authorization: Bearer <access_token>
 
-1) Auth & Profile
+1. Auth & Profile
 POST /api/users/register/ (public)
 {
   "email": "admin@airflourish.com",
@@ -46,15 +46,16 @@ POST /api/users/logout/
   "refresh": "<refresh_token>"
 }
 
-2) Bookings
-GET /api/bookings/bookings/
+2. Bookings
+GET /api/bookings/bookings/ - working
+
 POST /api/bookings/bookings/
 {
   "service_type": "flight",
   "status": "pending",
   "total_price": 1200.00
 }
-GET /api/bookings/bookings/{id}/
+GET /api/bookings/bookings/{id}/ -- working
 DELETE /api/bookings/bookings/{id}/
 PUT /api/bookings/bookings/{id}/ (admin)
 {
@@ -66,9 +67,10 @@ PATCH /api/bookings/bookings/{id}/ (admin)
 }
 GET /api/bookings/flights/search/?origin=LOS&destination=LHR&departure_date=2026-05-12&return_date=2026-05-20&limit=5
 
-3) Flights
-GET /api/flights/flights/
-POST /api/flights/flights/
+3. Flights
+GET /api/flights/flights/ -- empty
+
+POST /api/flights/flights/ -- removed
 {
   "departure_city": "Lagos",
   "arrival_city": "London",
@@ -98,19 +100,19 @@ PATCH /api/flights/flights/{id}/
   "passengers": 3
 }
 DELETE /api/flights/flights/{id}/
+
+-- search for flight using amadeus -- working
+http://127.0.0.1:8000/api/flights/search-flights/?origin=LOS&destination=LHR&departure_date=2026-05-12
+
+-- book hotel -- working
 POST /api/flights/secure-book/
 {
-  "flight_offer": {"offer_id": "FAKE-OFFER-123"},
+  "selected_flight_id": "1",
   "travelers": [
     {"first_name": "John", "last_name": "Doe", "age": 30, "passport_number": "A1234567"}
-  ],
-  "departure_city": "Lagos",
-  "arrival_city": "London",
-  "departure_date": "2026-05-12",
-  "return_date": "2026-05-20",
-  "airline": "British Airways",
-  "passengers": 1
+  ]
 }
+
 POST /api/flights/verify-payment/
 {
   "tx_ref": "TX-FLIGHT-123456",
@@ -125,18 +127,20 @@ POST /api/flights/verify-payment/
   "passengers": 1
 }
 
-4) Hotels (user)
-GET /api/hotels/hotels/?city=Lagos&check_in=2026-05-12&check_out=2026-05-15&guests=2
-GET /api/hotels/hotels/{id}/
-GET /api/hotels/hotel-reservations/
-POST /api/hotels/hotel-reservations/
+4. Hotels (user)
+GET /api/hotels/hotels/?city=Lagos&check_in=2026-05-12&check_out=2026-05-15&guests=2  -- working
+
+GET /api/hotels/hotels/{id}/ -- working
+
+GET /api/hotels/hotel-reservations/ -- working
+POST /api/hotels/hotel-reservations/ -- working
 {
   "hotel_id": 1,
   "check_in": "2026-05-12",
   "check_out": "2026-05-15",
   "guests": 2
 }
-GET /api/hotels/hotel-reservations/{id}/
+GET /api/hotels/hotel-reservations/{id}/ -- working
 PUT /api/hotels/hotel-reservations/{id}/
 {
   "check_in": "2026-05-13",
@@ -149,9 +153,9 @@ PATCH /api/hotels/hotel-reservations/{id}/
 }
 DELETE /api/hotels/hotel-reservations/{id}/
 
-5) Hotels (admin)
-GET /api/hotels/admin-hotels/
-POST /api/hotels/admin-hotels/
+5. Hotels (admin)
+GET /api/hotels/admin-hotels/ -- working
+POST /api/hotels/admin-hotels/ -- working
 {
   "hotel_name": "Airflourish Hotel",
   "city": "Lagos",
@@ -164,7 +168,8 @@ POST /api/hotels/admin-hotels/
   "description": "Luxury hotel with free breakfast",
   "facilities": ["wifi", "pool"]
 }
-GET /api/hotels/admin-hotels/{id}/
+GET /api/hotels/admin-hotels/{id}/ -- working
+
 PUT /api/hotels/admin-hotels/{id}/
 {
   "hotel_name": "Airflourish Hotel Updated",
@@ -190,7 +195,7 @@ POST /api/hotels/admin-hotels/create_hotel/ (legacy)
 GET /api/hotels/admin-hotels/get_hotel/{hotel_id}/ (legacy)
 GET /api/hotels/admin-hotels/get_all_hotels/ (legacy)
 
-6) Transports (user)
+6. Transports (user)
 GET /api/transport/transport-options/
 GET /api/transport/transport-options/{id}/
 GET /api/transport/transports/
@@ -232,7 +237,7 @@ DELETE /api/transport/transport-reservations/{id}/
 POST /api/transport/transport-reservations/{id}/cancel/
 GET /api/transport/search/?pickup=Lagos&dropoff=Victoria&vehicle_type=sedan
 
-7) Transports (admin)
+7. Transports (admin)
 GET /api/transport/admin-transports/
 POST /api/transport/admin-transports/
 {
@@ -272,7 +277,7 @@ PATCH /api/transport/admin-transport-reservations/{id}/
 }
 DELETE /api/transport/admin-transport-reservations/{id}/
 
-8) Visas (user)
+8. Visas (user)
 GET /api/visas/visas/
 POST /api/visas/visas/
 {
@@ -299,7 +304,7 @@ PATCH /api/visas/visas/{id}/
 }
 DELETE /api/visas/visas/{id}/
 
-9) Visas (admin)
+9. Visas (admin)
 POST /api/visas/approve/{visa_id}/ (legacy)
 {
   "action": "approve"
@@ -313,7 +318,7 @@ POST /api/visas/visas/{id}/submit_to_embassy/
 POST /api/visas/visas/{id}/approve/
 POST /api/visas/visas/{id}/reject/
 
-10) Payments (user/admin)
+10. Payments (user/admin)
 GET /api/payments/payments/
 POST /api/payments/payments/
 {
@@ -356,7 +361,7 @@ POST /api/payments/verify/
   "tx_ref": "TX-CARD-123"
 }
 
-11) Public payment callbacks
+11. Public payment callbacks
 POST /api/payments/webhook/flutterwave/ (public)
 Headers: verif-hash: <flutterwave_secret_hash>
 {
@@ -368,20 +373,23 @@ Headers: verif-hash: <flutterwave_secret_hash>
 }
 GET /api/payments/redirect/?tx_ref=TX-CARD-123&status=successful
 
-12) Transactions & Wallet
+12. Transactions & Wallet
 GET /api/transactions/my-transactions/
 GET /api/transactions/admin/transactions/ (admin)
 GET /api/wallet/
 GET /api/wallet/ledger/
 
-13) Notifications
+13. Notifications
 GET /api/notifications/
 POST /api/notifications/read/{notification_id}/
 
-14) Admin/Platform UI (no body)
+14. Admin/Platform UI (no body)
 GET /admin/
 GET /swagger/
 GET /redoc/
 GET /swagger.json
 GET /swagger.yaml
 GET /accounts/
+
+
+POST /api/payments/webhook/flutterwave/ -- working

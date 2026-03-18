@@ -5,6 +5,7 @@ from celery import shared_task
 from app.flights.models import FlightBooking
 from app.payments.models import Payment
 from app.services.amadeus import AmadeusService
+from app.services.amadeus_transformer import ensure_amadeus_travelers
 from app.services.booking_engine import BookingEngine
 from app.services.flutterwave import FlutterwaveService
 
@@ -23,9 +24,10 @@ def process_flight_booking_logic(payment):
         )
 
     # Call Amadeus
+    normalized_travelers = ensure_amadeus_travelers(travelers)
     flight_order = AmadeusService.create_flight_order(
         flight_offer,
-        travelers,
+        normalized_travelers,
     )
 
     booking.external_service_id = flight_order.get("id")
