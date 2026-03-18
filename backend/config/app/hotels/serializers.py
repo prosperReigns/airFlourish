@@ -12,9 +12,12 @@ class HotelReservationSerializer(serializers.ModelSerializer):
         "guests": 2
     }
     """
+    reservation_id = serializers.IntegerField(source="id", read_only=True)
+
     class Meta:
         model = HotelReservation
         fields = [
+            "reservation_id",
             "id",
             "user",
             "booking",

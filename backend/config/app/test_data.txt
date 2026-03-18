@@ -47,8 +47,7 @@ POST /api/users/logout/
 }
 
 2. Bookings
-GET /api/bookings/bookings/ - working
-
+GET /api/bookings/bookings/ -- working
 POST /api/bookings/bookings/
 {
   "service_type": "flight",
@@ -65,11 +64,9 @@ PATCH /api/bookings/bookings/{id}/ (admin)
 {
   "status": "cancelled"
 }
-GET /api/bookings/flights/search/?origin=LOS&destination=LHR&departure_date=2026-05-12&return_date=2026-05-20&limit=5
 
 3. Flights
 GET /api/flights/flights/ -- empty
-
 GET /api/flights/flights/{id}/
 PUT /api/flights/flights/{id}/
 {
@@ -86,7 +83,7 @@ PATCH /api/flights/flights/{id}/
 DELETE /api/flights/flights/{id}/
 
 -- search for flight using amadeus -- working
-http://127.0.0.1:8000/api/flights/search-flights/?origin=LOS&destination=LHR&departure_date=2026-05-12
+GET /api/flights/search-flights/?origin=LOS&destination=LHR&departure_date=2026-05-12&return_date=2026-05-20
 
 -- book flight -- working
 POST /api/flights/secure-book/
@@ -107,40 +104,52 @@ POST /api/flights/secure-book/
   ]
 }
 
--- repay failed flight
-POST /api/payments/replay/ (admin only)
+-- replay failed flight payment (admin)
+POST /api/payments/payments/replay/
 { "tx_ref": "PAY-..." }
 
-
 4. Hotels (user)
-GET /api/hotels/hotels/?city=Lagos&check_in=2026-05-12&check_out=2026-05-15&guests=2  -- working
-
+GET /api/hotels/ -- working
 GET /api/hotels/hotel/{id}/ -- working
 
 GET /api/hotels/reservations/ -- working
-POST /api/hotels/book-secure/ -- working
+GET /api/hotels/reservation/{id}/ -- working
+
+POST /api/hotels/reservation/book-secure/ -- working
 {
   "hotel_id": 1,
   "check_in": "2026-05-12",
   "check_out": "2026-05-15",
+  "guests": 2,
+  "payment_method": "card"
+}
+
+POST /api/hotels/hotel-reservation/
+Headers: Idempotency-Key: idem-001
+{
+  "hotel_id": 3,
+  "check_in": "2026-05-12",
+  "check_out": "2026-05-15",
   "guests": 2
 }
-POST /api/hotels/hotel-reservation/
+POST /api/hotels/reservation/checkout/
+Headers: Idempotency-Key: idem-002
+{
+  "reservation_id": 123,
+  "payment_method": "card"
+}
 
-POST /api/hotels/checkout/
-
-GET /api/hotels/reservations/{id}/ -- working
-PUT /api/hotels/hotel-reservations/{id}/
+PUT /api/hotels/reservation/{id}/
 {
   "check_in": "2026-05-13",
   "check_out": "2026-05-16",
   "guests": 3
 }
-PATCH /api/hotels/hotel-reservations/{id}/
+PATCH /api/hotels/reservation/{id}/
 {
   "guests": 1
 }
-DELETE /api/hotels/hotel-reservations/{id}/
+DELETE /api/hotels/reservation/{id}/
 
 5. Hotels (admin)
 GET /api/hotels/admin-hotels/ -- working
@@ -158,7 +167,6 @@ POST /api/hotels/admin-hotels/ -- working
   "facilities": ["wifi", "pool"]
 }
 GET /api/hotels/admin-hotels/{id}/ -- working
-
 PUT /api/hotels/admin-hotels/{id}/
 {
   "hotel_name": "Airflourish Hotel Updated",
@@ -266,46 +274,42 @@ PATCH /api/transport/admin-transport-reservations/{id}/
 }
 DELETE /api/transport/admin-transport-reservations/{id}/
 
-8. Visas (user)
-GET /api/visas/visas/
-POST /api/visas/visas/
-{
-  "flight_id": 1,
-  "destination_country": "United Kingdom",
-  "visa_type": "Tourist",
-  "appointment_date": "2026-05-01",
-  "passport_scan": null,
-  "photo": null,
-  "supporting_docs": null,
-  "visa_fee": 200.00,
-  "currency": "USD"
-}
-GET /api/visas/visas/{id}/
-PUT /api/visas/visas/{id}/
-{
-  "destination_country": "United Kingdom",
-  "visa_type": "Business",
-  "appointment_date": "2026-05-02"
-}
-PATCH /api/visas/visas/{id}/
+8. Visas (user workflow)
+POST /api/visas/applications/
 {
   "visa_type": "Tourist"
 }
-DELETE /api/visas/visas/{id}/
+PATCH /api/visas/applications/{id}/
+{
+  "visa_type": "Business"
+}
+POST /api/visas/applications/{id}/documents/
+Content-Type: multipart/form-data
+{
+  "document_type": "passport",
+  "file": "<file>"
+}
+POST /api/visas/applications/{id}/validate/
+
+POST /api/visas/applications/{id}/checkout/
+Headers: Idempotency-Key: visa-001
+{
+  "amount": 200.00,
+  "currency": "USD",
+  "payment_method": "card"
+}
+
+POST /api/visas/payments/verify/
+{
+  "tx_ref": "PAY-XXXX"
+}
+
+POST /api/visas/applications/{id}/submit/
 
 9. Visas (admin)
-POST /api/visas/approve/{visa_id}/ (legacy)
-{
-  "action": "approve"
-}
-POST /api/visas/approve/{visa_id}/ (legacy)
-{
-  "action": "reject"
-}
-POST /api/visas/visas/{id}/verify_documents/
-POST /api/visas/visas/{id}/submit_to_embassy/
-POST /api/visas/visas/{id}/approve/
-POST /api/visas/visas/{id}/reject/
+POST /api/visas/applications/{id}/review/
+POST /api/visas/applications/{id}/approve/
+POST /api/visas/applications/{id}/reject/
 
 10. Payments (user/admin)
 GET /api/payments/payments/
@@ -379,6 +383,5 @@ GET /redoc/
 GET /swagger.json
 GET /swagger.yaml
 GET /accounts/
-
 
 POST /api/payments/webhook/flutterwave/ -- working

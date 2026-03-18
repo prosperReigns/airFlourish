@@ -96,7 +96,7 @@ def _convert_amount(amount, base_currency, target_currency):
 
 @method_decorator(
     name="list",
-    decorator=swagger_auto_schema(operation_description="List available hotels.",
+    decorator=swagger_auto_schema(operation_description="List available hotels. Endpoint: /api/hotels/",
                                   manual_parameters=[
                                  openapi.Parameter(
                                      'city', openapi.IN_QUERY, description="Filter hotels by city", type=openapi.TYPE_STRING
@@ -115,7 +115,7 @@ def _convert_amount(amount, base_currency, target_currency):
 )
 @method_decorator(
     name="retrieve",
-    decorator=swagger_auto_schema(operation_description="Retrieve a hotel by ID.",
+    decorator=swagger_auto_schema(operation_description="Retrieve a hotel by ID. Endpoint: /api/hotels/hotel/{id}/",
                                   manual_parameters=[
                                  openapi.Parameter(
                                      'id', openapi.IN_PATH, description="The ID of the hotel to retrieve", type=openapi.TYPE_INTEGER
@@ -135,7 +135,7 @@ class HotelViewSet(viewsets.ReadOnlyModelViewSet):
 
 @method_decorator(
     name="list",
-    decorator=swagger_auto_schema(operation_description="List hotel reservations.",
+    decorator=swagger_auto_schema(operation_description="List hotel reservations. Endpoint: /api/hotels/reservations/",
                                   manual_parameters=[
                                  openapi.Parameter(
                                      'hotel_id', openapi.IN_QUERY, description="Filter reservations by hotel ID", type=openapi.TYPE_INTEGER
@@ -145,7 +145,7 @@ class HotelViewSet(viewsets.ReadOnlyModelViewSet):
 )
 @method_decorator(
     name="retrieve",
-    decorator=swagger_auto_schema(operation_description="Retrieve a hotel reservation by ID.",
+    decorator=swagger_auto_schema(operation_description="Retrieve a hotel reservation by ID. Endpoint: /api/hotels/reservation/{id}/",
                                   manual_parameters=[
                                  openapi.Parameter(
                                      'id', openapi.IN_PATH, description="The ID of the hotel reservation to retrieve", type=openapi.TYPE_INTEGER
@@ -155,8 +155,22 @@ class HotelViewSet(viewsets.ReadOnlyModelViewSet):
 )
 @method_decorator(
     name="create",
-    decorator=swagger_auto_schema(operation_description="Create a hotel reservation.",
-                                  request_body=HotelReservationSerializer,
+    decorator=swagger_auto_schema(
+        operation_description="Create a hotel booking with payment (legacy). Endpoint: /api/hotels/book-secure/",
+                                  request_body=openapi.Schema(
+                                      type=openapi.TYPE_OBJECT,
+                                      required=["hotel_id", "check_in", "check_out"],
+                                      properties={
+                                          "hotel_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                          "check_in": openapi.Schema(type=openapi.TYPE_STRING, format="date"),
+                                          "check_out": openapi.Schema(type=openapi.TYPE_STRING, format="date"),
+                                          "guests": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                          "payment_method": openapi.Schema(
+                                              type=openapi.TYPE_STRING,
+                                              description="Optional: card or bank_transfer",
+                                          ),
+                                      },
+                                  ),
                                   responses={
                                  201: openapi.Response(
                                      description="Hotel reservation created successfully",
@@ -609,7 +623,7 @@ class HotelReservationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="book-secure")
     @swagger_auto_schema(
-        operation_description="Create a hotel booking with payment.",
+        operation_description="Create a hotel booking with payment. Endpoint: /api/hotels/book-secure/",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             required=["hotel_id", "check_in", "check_out"],
@@ -643,7 +657,7 @@ class HotelReservationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="reservation")
     @swagger_auto_schema(
-        operation_description="Create a hotel reservation without payment.",
+        operation_description="Create a hotel reservation without payment. Endpoint: /api/hotels/hotel-reservation/",
         manual_parameters=[
             openapi.Parameter(
                 "Idempotency-Key",
@@ -681,7 +695,7 @@ class HotelReservationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="checkout")
     @swagger_auto_schema(
-        operation_description="Pay for an existing hotel reservation.",
+        operation_description="Pay for an existing hotel reservation. Endpoint: /api/hotels/checkout/",
         manual_parameters=[
             openapi.Parameter(
                 "Idempotency-Key",

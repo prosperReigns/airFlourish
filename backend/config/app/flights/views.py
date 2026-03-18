@@ -270,11 +270,20 @@ class SecureFlightBookingView(APIView):
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
-    @swagger_auto_schema(operation_description="Initiate secure flight booking and return payment link.",
+    @swagger_auto_schema(
+        operation_description=(
+            "Initiate secure flight booking and return payment link. "
+            "Provide `selected_flight_id` from search results or `flight_offer` directly. "
+            "Endpoint: /api/flights/secure-book/"
+        ),
                          request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=["flight_offer", "travelers", "departure_city", "arrival_city", "departure_date", "airline"],
+            required=["travelers"],
             properties={
+                "selected_flight_id": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Flight ID returned from search. If provided, cached offer is used.",
+                ),
                 "flight_offer": openapi.Schema(type=openapi.TYPE_OBJECT, description="Flight offer from Amadeus"),
                 "travelers": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_OBJECT)),
                 "departure_city": openapi.Schema(type=openapi.TYPE_STRING),
@@ -298,6 +307,8 @@ class SecureFlightBookingView(APIView):
                         "payment_link": openapi.Schema(type=openapi.TYPE_STRING),
                         "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
                         "booking_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                        "payment_options": openapi.Schema(type=openapi.TYPE_STRING),
+                        "bank_transfer_available": openapi.Schema(type=openapi.TYPE_BOOLEAN),
                     },
                 ),
             ),
@@ -480,6 +491,40 @@ class SecureFlightBookingView(APIView):
 class FlightSearchView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(
+        operation_description="Search flights via Amadeus. Endpoint: /api/flights/search-flights/",
+        manual_parameters=[
+            openapi.Parameter("origin", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("destination", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("departure_date", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("return_date", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+        ],
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_ARRAY,
+                items=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "id": openapi.Schema(type=openapi.TYPE_STRING),
+                        "price": openapi.Schema(type=openapi.TYPE_STRING),
+                        "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                        "departure": openapi.Schema(type=openapi.TYPE_STRING),
+                        "arrival": openapi.Schema(type=openapi.TYPE_STRING),
+                        "departure_time": openapi.Schema(type=openapi.TYPE_STRING),
+                        "arrival_time": openapi.Schema(type=openapi.TYPE_STRING),
+                        "duration": openapi.Schema(type=openapi.TYPE_STRING),
+                        "stops": openapi.Schema(type=openapi.TYPE_INTEGER),
+                        "airline": openapi.Schema(type=openapi.TYPE_STRING),
+                        "raw_offer": openapi.Schema(type=openapi.TYPE_OBJECT),
+                        "original_price": openapi.Schema(type=openapi.TYPE_STRING),
+                        "original_currency": openapi.Schema(type=openapi.TYPE_STRING),
+                    },
+                ),
+            ),
+            400: "Missing required query params",
+            502: "Upstream error",
+        },
+    )
     def get(self, request):
         origin = request.GET.get("origin")  # e.g. LOS
         destination = request.GET.get("destination")  # e.g. LHR

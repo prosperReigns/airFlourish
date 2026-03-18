@@ -1,6 +1,8 @@
+import logging
 import uuid
 
 from celery import shared_task
+from django.core.exceptions import ValidationError
 from app.audit.services import log_action
 from app.hotels.models import HotelReservation
 from app.notifications.services import create_notification
@@ -16,6 +18,8 @@ from app.transactions.services import (
 )
 from app.transport.models import TransportReservation, TransportService
 from app.visas.models import VisaApplication
+
+logger = logging.getLogger(__name__)
 
 def _confirm_hotel_booking(booking):
     reservation = HotelReservation.objects.filter(booking=booking).first()
@@ -44,9 +48,21 @@ def _confirm_transport_booking(booking):
 
 def _confirm_visa_booking(booking):
     visa = VisaApplication.objects.filter(booking=booking).first()
-    if visa:
-        visa.status = "submitted"
-        visa.save(update_fields=["status"])
+    if not visa:
+        return
+    if visa.status == VisaApplication.STATUS_PAID:
+        return
+    if visa.status != VisaApplication.STATUS_READY_FOR_PAYMENT:
+        logger.warning(
+            "Visa payment confirmed but application %s is %s",
+            visa.id,
+            visa.status,
+        )
+        return
+    try:
+        visa.transition_to(VisaApplication.STATUS_PAID)
+    except ValidationError:
+        logger.exception("Visa status transition failed for %s", visa.id)
 
 
 @shared_task(bind=True, max_retries=3)
