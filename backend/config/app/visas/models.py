@@ -2,6 +2,32 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from app.bookings.models import Booking
+from app.visas.constants import get_default_documents
+
+
+class VisaType(models.Model):
+    code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+    country = models.CharField(max_length=2, blank=True)
+    description = models.TextField(blank=True)
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    required_documents = models.JSONField(default=list, blank=True)
+    processing_days = models.PositiveIntegerField(default=7)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["country", "is_active"])]
+
+    def save(self, *args, **kwargs):
+        if not self.required_documents:
+            defaults = get_default_documents(self.country, self.name or self.code)
+            if defaults:
+                self.required_documents = defaults
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
 
 
 class VisaApplication(models.Model):
@@ -48,7 +74,13 @@ class VisaApplication(models.Model):
         blank=True,
         related_name="visa_application",
     )
-    visa_type = models.CharField(max_length=100)
+    visa_type = models.ForeignKey(
+        VisaType,
+        on_delete=models.PROTECT,
+        related_name="applications",
+        null=True,
+        blank=True,
+    )
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
@@ -73,7 +105,8 @@ class VisaApplication(models.Model):
             self.save(update_fields=["is_locked", "updated_at"])
 
     def __str__(self):
-        return f"{self.user_id} - {self.visa_type} ({self.status})"
+        visa_type = self.visa_type.name if self.visa_type else "unknown"
+        return f"{self.user_id} - {visa_type} ({self.status})"
 
 
 class VisaDocument(models.Model):

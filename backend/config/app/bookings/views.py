@@ -12,6 +12,7 @@ from app.services.booking_engine import BookingEngine
 from rest_framework.throttling import UserRateThrottle
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from app.core.pagination import DefaultPagination
 
 @method_decorator(
     name="list",
@@ -186,6 +187,13 @@ class FlightSearchView(APIView):
                                          openapi.Parameter(
                                              'limit', openapi.IN_QUERY, description="Maximum number of results to return", type=openapi.TYPE_INTEGER, required=False
                                          )
+                                         ,
+                                         openapi.Parameter(
+                                             'page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER, required=False
+                                         ),
+                                         openapi.Parameter(
+                                             'page_size', openapi.IN_QUERY, description="Items per page (max 100)", type=openapi.TYPE_INTEGER, required=False
+                                         )
                                     ]
                                 )
     def get(self, request):
@@ -218,6 +226,10 @@ class FlightSearchView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         flights = AmadeusService.search_flights(origin, destination, departure_date, return_date)
+        paginator = DefaultPagination()
+        page = paginator.paginate_queryset(flights, request, view=self)
+        if page is not None:
+            return paginator.get_paginated_response(page)
         return Response(flights)
 
 #bookings/<booking_id>/cancel/ - cancel a booking

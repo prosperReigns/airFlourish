@@ -1,5 +1,11 @@
 from django.contrib import admin
-from .models import VisaApplication, VisaDocument, VisaPayment
+from .models import VisaApplication, VisaDocument, VisaPayment, VisaType
+
+@admin.register(VisaType)
+class VisaTypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "country", "is_active")
+    list_filter = ("country", "is_active")
+    search_fields = ("name", "code")
 
 @admin.register(VisaApplication)
 class VisaApplicationAdmin(admin.ModelAdmin):

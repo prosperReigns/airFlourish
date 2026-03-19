@@ -26,6 +26,7 @@ from .serializers import FlightBookingSerializer
 from app.services.flight_transformer import simplify_flight_offers
 from app.services.amadeus_transformer import _extract_flight_details
 from app.services.helper_function import _convert_amount, _get_user_currency,_quantize_amount,_to_decimal
+from app.core.pagination import DefaultPagination
 
 @method_decorator(
     name="list",
@@ -394,6 +395,8 @@ class FlightSearchView(APIView):
             openapi.Parameter("destination", openapi.IN_QUERY, type=openapi.TYPE_STRING),
             openapi.Parameter("departure_date", openapi.IN_QUERY, type=openapi.TYPE_STRING),
             openapi.Parameter("return_date", openapi.IN_QUERY, type=openapi.TYPE_STRING),
+            openapi.Parameter("page", openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
+            openapi.Parameter("page_size", openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
         ],
         responses={
             200: openapi.Schema(
@@ -483,4 +486,9 @@ class FlightSearchView(APIView):
             offer["price"] = str(_quantize_amount(converted_amount))
             offer["currency"] = target_currency
                 
+        paginator = DefaultPagination()
+        page = paginator.paginate_queryset(simplified, request, view=self)
+        if page is not None:
+            return paginator.get_paginated_response(page)
+
         return Response(simplified)

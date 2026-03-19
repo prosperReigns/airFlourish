@@ -84,6 +84,7 @@ DELETE /api/flights/flights/{id}/
 
 -- search for flight using amadeus -- working
 GET /api/flights/search-flights/?origin=LOS&destination=LHR&departure_date=2026-05-12&return_date=2026-05-20
+GET /api/flights/search-flights/?origin=LOS&destination=LHR&departure_date=2026-05-12&page=1&page_size=10
 
 -- book flight -- working
 POST /api/flights/secure-book/
@@ -110,6 +111,7 @@ POST /api/payments/payments/replay/
 
 4. Hotels (user)
 GET /api/hotels/ -- working
+GET /api/hotels/?city=Lagos&page=1&page_size=10
 GET /api/hotels/hotel/{id}/ -- working
 
 GET /api/hotels/reservations/ -- working
@@ -275,18 +277,51 @@ PATCH /api/transport/admin-transport-reservations/{id}/
 DELETE /api/transport/admin-transport-reservations/{id}/
 
 8. Visas (user workflow)
+GET /api/visas/visa-types/?country=NG
+Response:
+{
+  "country": "NG",
+  "visa_types": [
+    {"id": 1, "code": "tourist", "name": "Tourist", "country": "NG", "description": "", "price": 200.00, "required_documents": ["passport"], "processing_days": 7, "is_active": true},
+    {"id": 2, "code": "business", "name": "Business", "country": "NG", "description": "", "price": 350.00, "required_documents": ["passport", "bank_statement"], "processing_days": 10, "is_active": true}
+  ]
+}
+GET /api/visas/visa-types/?country=NG&ordering=-created_at&page=1&page_size=10
+
+GET /api/visas/visa-types/?country=US
+Response:
+{
+  "country": "US",
+  "visa_types": [
+    {"id": 10, "code": "tourist_us", "name": "Tourist", "country": "US", "description": "US tourist visa", "price": 160.00, "required_documents": ["passport"], "processing_days": 14, "is_active": true}
+  ]
+}
 POST /api/visas/applications/
 {
-  "visa_type": "Tourist"
+  "visa_type": "tourist"
+}
+POST /api/visas/applications/
+{
+  "visa_type": 2
+}
+POST /api/visas/applications/
+{
+  "visa_type": {"code": "tourist"}
 }
 PATCH /api/visas/applications/{id}/
 {
-  "visa_type": "Business"
+  "visa_type": "business"
 }
 POST /api/visas/applications/{id}/documents/
 Content-Type: multipart/form-data
 {
   "document_type": "passport",
+  "file": "<file>"
+}
+POST /api/visas/applications/{id}/documents/
+Content-Type: multipart/form-data
+{
+  "document_type": "bank_statement",
   "file": "<file>"
 }
 POST /api/visas/applications/{id}/validate/
@@ -307,6 +342,41 @@ POST /api/visas/payments/verify/
 POST /api/visas/applications/{id}/submit/
 
 9. Visas (admin)
+GET /api/visas/admin/visa-types/
+GET /api/visas/admin/visa-types/?country=NG
+GET /api/visas/admin/visa-types/?is_active=true
+GET /api/visas/admin/visa-types/?search=tour
+GET /api/visas/admin/visa-types/?ordering=name
+GET /api/visas/admin/visa-types/?ordering=-created_at&page=1&page_size=10
+POST /api/visas/admin/visa-types/
+{
+  "code": "tourist",
+  "name": "Tourist",
+  "country": "NG",
+  "description": "Tourist visa for short stays",
+  "price": 200.00,
+  "required_documents": ["passport"],
+  "processing_days": 7,
+  "is_active": true
+}
+GET /api/visas/admin/visa-types/{id}/
+PUT /api/visas/admin/visa-types/{id}/
+{
+  "code": "business",
+  "name": "Business",
+  "country": "NG",
+  "description": "Business visa",
+  "price": 350.00,
+  "required_documents": ["passport", "bank_statement"],
+  "processing_days": 10,
+  "is_active": true
+}
+PATCH /api/visas/admin/visa-types/{id}/
+{
+  "is_active": false
+}
+DELETE /api/visas/admin/visa-types/{id}/
+
 POST /api/visas/applications/{id}/review/
 POST /api/visas/applications/{id}/approve/
 POST /api/visas/applications/{id}/reject/

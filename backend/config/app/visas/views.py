@@ -3,10 +3,12 @@ from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import transaction
-from rest_framework import status, viewsets
+from django.db import transaction, models
+from django.utils.decorators import method_decorator
+from rest_framework import status, viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from app.core.pagination import DefaultPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_yasg.utils import swagger_auto_schema
@@ -24,11 +26,12 @@ from app.transactions.services import (
     mark_transaction_failed,
 )
 from app.users.permissions import IsAdminUserType
-from app.visas.models import VisaApplication, VisaPayment
+from app.visas.models import VisaApplication, VisaPayment, VisaType
 from app.visas.serializers import (
     VisaApplicationSerializer,
     VisaDocumentSerializer,
     VisaPaymentSerializer,
+    VisaTypeSerializer,
 )
 from app.visas.services.validation_service import validate_application
 
@@ -98,7 +101,9 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
         if not ok:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = VisaDocumentSerializer(data=request.data)
+        serializer = VisaDocumentSerializer(
+            data=request.data, context={"application": application}
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save(application=application)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -293,7 +298,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
 
         meta = {
             "application_id": application.id,
-            "visa_type": application.visa_type,
+            "visa_type": application.visa_type.code if application.visa_type else None,
             "amount": str(amount),
             "currency": currency,
         }
@@ -427,6 +432,97 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
         return Response({"status": application.status}, status=status.HTTP_200_OK)
 
 
+class VisaTypeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description=(
+            "List visa types by country. Endpoint: /api/visas/visa-types/ "
+            "Supports ?country=NG&ordering=name&page=1&page_size=20"
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                "country",
+                openapi.IN_QUERY,
+                description="ISO country code (e.g., NG)",
+                type=openapi.TYPE_STRING,
+            )
+            ,
+            openapi.Parameter(
+                "ordering",
+                openapi.IN_QUERY,
+                description="Order by: name, -name, code, -code, created_at, -created_at",
+                type=openapi.TYPE_STRING,
+            ),
+            openapi.Parameter(
+                "page",
+                openapi.IN_QUERY,
+                description="Page number",
+                type=openapi.TYPE_INTEGER,
+            ),
+            openapi.Parameter(
+                "page_size",
+                openapi.IN_QUERY,
+                description="Items per page (max 100)",
+                type=openapi.TYPE_INTEGER,
+            ),
+        ],
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "country": openapi.Schema(type=openapi.TYPE_STRING),
+                    "visa_types": openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                "code": openapi.Schema(type=openapi.TYPE_STRING),
+                                "name": openapi.Schema(type=openapi.TYPE_STRING),
+                                "country": openapi.Schema(type=openapi.TYPE_STRING),
+                                "description": openapi.Schema(type=openapi.TYPE_STRING),
+                                "price": openapi.Schema(type=openapi.TYPE_NUMBER),
+                                "required_documents": openapi.Schema(
+                                    type=openapi.TYPE_ARRAY,
+                                    items=openapi.Items(type=openapi.TYPE_STRING),
+                                ),
+                                "processing_days": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                "is_active": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                            },
+                        ),
+                    ),
+                },
+            ),
+            400: "country is required",
+        },
+    )
+    def get(self, request):
+        country = (request.GET.get("country") or "").strip().upper()
+        if not country:
+            return Response({"error": "country is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        ordering = (request.query_params.get("ordering") or "name").strip()
+        allowed_ordering = {"name", "-name", "code", "-code", "created_at", "-created_at"}
+        if ordering not in allowed_ordering:
+            ordering = "name"
+
+        queryset = VisaType.objects.filter(is_active=True, country__iexact=country).order_by(ordering)
+        if not queryset.exists():
+            queryset = VisaType.objects.filter(is_active=True, country="").order_by(ordering)
+
+        paginator = DefaultPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = VisaTypeSerializer(page or queryset, many=True)
+
+        if page is not None:
+            return paginator.get_paginated_response(
+                {"country": country, "visa_types": serializer.data}
+            )
+
+        return Response({"country": country, "visa_types": serializer.data}, status=status.HTTP_200_OK)
+
+
 class VisaPaymentVerificationView(APIView):
     authentication_classes = []
     permission_classes = [IsAuthenticated, IsAdminUserType]
@@ -534,3 +630,72 @@ class VisaPaymentVerificationView(APIView):
         legacy_payment.status = VisaPayment.STATUS_FAILED
         legacy_payment.save(update_fields=["status", "updated_at"])
         return Response({"status": "failed"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@method_decorator(
+    name="list",
+    decorator=swagger_auto_schema(
+        operation_description=(
+            "List visa types (admin). Supports ?country=NG&is_active=true&search=tour"
+            "&ordering=name&page=1&page_size=20"
+        ),
+    ),
+)
+@method_decorator(
+    name="retrieve",
+    decorator=swagger_auto_schema(operation_description="Retrieve a visa type (admin)."),
+)
+@method_decorator(
+    name="create",
+    decorator=swagger_auto_schema(
+        operation_description="Create a visa type (admin).",
+        request_body=VisaTypeSerializer,
+        responses={201: VisaTypeSerializer()},
+    ),
+)
+@method_decorator(
+    name="update",
+    decorator=swagger_auto_schema(
+        operation_description="Update a visa type (admin).",
+        request_body=VisaTypeSerializer,
+        responses={200: VisaTypeSerializer()},
+    ),
+)
+@method_decorator(
+    name="partial_update",
+    decorator=swagger_auto_schema(
+        operation_description="Partially update a visa type (admin).",
+        request_body=VisaTypeSerializer,
+        responses={200: VisaTypeSerializer()},
+    ),
+)
+@method_decorator(
+    name="destroy",
+    decorator=swagger_auto_schema(operation_description="Delete a visa type (admin)."),
+)
+class VisaTypeAdminViewSet(viewsets.ModelViewSet):
+    queryset = VisaType.objects.all()
+    serializer_class = VisaTypeSerializer
+    permission_classes = [IsAuthenticated, IsAdminUserType]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ["name", "code", "country", "is_active", "created_at"]
+    ordering = ["name"]
+    pagination_class = DefaultPagination
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        country = (self.request.query_params.get("country") or "").strip().upper()
+        is_active = self.request.query_params.get("is_active")
+        search = (self.request.query_params.get("search") or "").strip()
+
+        if country:
+            queryset = queryset.filter(country__iexact=country)
+        if is_active is not None and is_active != "":
+            is_active_value = str(is_active).lower() in {"1", "true", "yes"}
+            queryset = queryset.filter(is_active=is_active_value)
+        if search:
+            queryset = queryset.filter(
+                models.Q(name__icontains=search) | models.Q(code__icontains=search)
+            )
+
+        return queryset

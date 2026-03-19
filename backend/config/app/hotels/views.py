@@ -21,6 +21,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg import openapi
 from app.services.helper_function import _convert_amount, _get_user_currency, _quantize_amount, _to_decimal
 from app.hotels.helper_function import _calculate_hotel_total, _load_hotel_and_dates
+from app.core.pagination import DefaultPagination
 
 @method_decorator(
     name="list",
@@ -59,6 +60,7 @@ class HotelViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Hotel.objects.all()
     serializer_class = HotelSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = DefaultPagination
 
 
 @method_decorator(
