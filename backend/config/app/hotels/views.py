@@ -1,11 +1,10 @@
-from datetime import datetime, timedelta
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from datetime import timedelta
 
 from django.db import transaction
 from django.conf import settings
 from django.utils import timezone
 from django.utils.decorators import method_decorator
-from rest_framework import permissions, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
@@ -15,84 +14,13 @@ from app.services.flutterwave import FlutterwaveService
 from app.services.reference_generator import generate_booking_reference
 from app.payments.models import Payment
 from app.transactions.services import get_or_create_transaction
-from app.pricing.services import convert_currency
-from app.pricing.models import ExchangeRate
 from .models import Hotel, HotelReservation
 from .permissions import IsAdminUserType
 from .serializers import HotelReservationSerializer, HotelSerializer
 from rest_framework.permissions import IsAuthenticated
 from drf_yasg import openapi
-
-def _parse_date(value, field_name):
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").date()
-    except (TypeError, ValueError):
-        raise ValueError(f"Invalid {field_name} format. Use YYYY-MM-DD")
-
-def _load_hotel_and_dates(data):
-    hotel_id = data.get("hotel_id")
-    check_in = data.get("check_in")
-    check_out = data.get("check_out")
-    guests = int(data.get("guests", 1))
-
-    if not hotel_id:
-        raise ValueError("hotel_id is required")
-    if not check_in or not check_out:
-        raise ValueError("check_in and check_out are required")
-    if guests < 1:
-        raise ValueError("guests must be at least 1")
-
-    hotel = Hotel.objects.filter(id=hotel_id).first()
-    if not hotel:
-        raise LookupError("Hotel not found")
-
-    check_in_date = _parse_date(check_in, "check_in")
-    check_out_date = _parse_date(check_out, "check_out")
-
-    if check_out_date <= check_in_date:
-        raise ValueError("check_out must be after check_in")
-
-    if hotel.price_per_night is None:
-        raise ValueError("Hotel pricing is not available")
-
-    return hotel, check_in_date, check_out_date, guests
-
-def _calculate_hotel_total(hotel, check_in_date, check_out_date):
-    number_of_nights = (check_out_date - check_in_date).days
-    total_price = hotel.price_per_night * number_of_nights
-    return number_of_nights, total_price
-
-def _get_country_code(user):
-    country = getattr(user, "country", None)
-    if hasattr(country, "code"):
-        return country.code
-    if country:
-        return str(country)
-    return None
-
-def _get_user_currency(user, fallback_currency):
-    country_code = _get_country_code(user)
-    currency_map = getattr(settings, "COUNTRY_CURRENCY_MAP", {})
-    return currency_map.get(country_code, fallback_currency)
-
-def _to_decimal(value):
-    try:
-        return Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError):
-        return None
-
-def _quantize_amount(value):
-    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-def _convert_amount(amount, base_currency, target_currency):
-    if amount is None:
-        return None
-    if base_currency == target_currency:
-        return amount
-    try:
-        return convert_currency(amount, base_currency, target_currency)
-    except ExchangeRate.DoesNotExist:
-        return None
+from app.services.helper_function import _convert_amount, _get_user_currency, _quantize_amount, _to_decimal
+from app.hotels.helper_function import _calculate_hotel_total, _load_hotel_and_dates
 
 @method_decorator(
     name="list",
@@ -130,7 +58,7 @@ class HotelViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = Hotel.objects.all()
     serializer_class = HotelSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
 
 @method_decorator(
@@ -255,7 +183,7 @@ class HotelReservationViewSet(viewsets.ModelViewSet):
 
     queryset = HotelReservation.objects.all()
     serializer_class = HotelReservationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """Admin users can see all reservations, regular users can only see their own reservations."""
@@ -854,7 +782,7 @@ class AdminHotelViewSet(viewsets.ModelViewSet):
     Only users with user_type 'admin' can access this viewset."""
     queryset = Hotel.objects.all()
     serializer_class = HotelSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdminUserType]
+    permission_classes = [IsAuthenticated, IsAdminUserType]
 
     def perform_create(self, serializer):
         serializer.save()

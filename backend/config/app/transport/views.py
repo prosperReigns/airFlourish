@@ -1,57 +1,22 @@
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils.decorators import method_decorator
-from rest_framework import permissions, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.conf import settings
 from rest_framework.decorators import action
-
+from rest_framework.permissions import IsAuthenticated
 from app.services.booking_engine import BookingEngine
 from app.services.flutterwave import FlutterwaveService
 from app.services.reference_generator import generate_booking_reference
 from app.payments.models import Payment
 from app.transactions.services import get_or_create_transaction
-from app.pricing.services import convert_currency
-from app.pricing.models import ExchangeRate
 from .models import TransportService, TransportReservation
 from .serializers import TransportServiceSerializer, TransportReservationSerializer
 from .permissions import IsAdminUserType
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-
-def _get_country_code(user):
-    country = getattr(user, "country", None)
-    if hasattr(country, "code"):
-        return country.code
-    if country:
-        return str(country)
-    return None
-
-def _get_user_currency(user, fallback_currency):
-    country_code = _get_country_code(user)
-    currency_map = getattr(settings, "COUNTRY_CURRENCY_MAP", {})
-    return currency_map.get(country_code, fallback_currency)
-
-def _to_decimal(value):
-    try:
-        return Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError):
-        return None
-
-def _quantize_amount(value):
-    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-def _convert_amount(amount, base_currency, target_currency):
-    if amount is None:
-        return None
-    if base_currency == target_currency:
-        return amount
-    try:
-        return convert_currency(amount, base_currency, target_currency)
-    except ExchangeRate.DoesNotExist:
-        return None
+from app.services.helper_function import _convert_amount, _get_user_currency,_quantize_amount,_to_decimal
 
 @method_decorator(
     name="list",
@@ -113,7 +78,7 @@ def _convert_amount(amount, base_currency, target_currency):
 class TransportViewSet(viewsets.ReadOnlyModelViewSet):
     """Viewset for retrieving transport services."""
     serializer_class = TransportServiceSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """Admin users can see all transport services, while regular users can only see available transport services that are not yet booked. This method overrides the default queryset to filter the transport services based on the user's permissions.
@@ -229,7 +194,7 @@ class AdminTransportViewSet(viewsets.ModelViewSet):
     """
     queryset = TransportService.objects.all()
     serializer_class = TransportServiceSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdminUserType]
+    permission_classes = [IsAuthenticated, IsAdminUserType]
 
 #/transport-bookings/<int:pk>/
 @method_decorator(
@@ -378,7 +343,7 @@ class TransportBookingViewSet(viewsets.ModelViewSet):
     """
     queryset = TransportService.objects.all()
     serializer_class = TransportServiceSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """Admin users can see all transport bookings, while regular users can only see their own transport bookings. This method overrides the default queryset to filter the transport bookings based on the user's permissions.

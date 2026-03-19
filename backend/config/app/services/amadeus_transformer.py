@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime
 
 def _get_value(data, *keys):
     for key in keys:
@@ -107,3 +107,73 @@ def normalize_travelers(travelers):
         normalized.append(traveler)
 
     return normalized
+
+def _extract_flight_details(offer, travelers):
+    details = {}
+    if not isinstance(offer, dict):
+        return details
+
+    itineraries = offer.get("itineraries", [])
+    first_itinerary = itineraries[0] if itineraries else {}
+    segments = first_itinerary.get("segments", []) if isinstance(first_itinerary, dict) else []
+
+    if segments:
+        departure = segments[0].get("departure", {}) if isinstance(segments[0], dict) else {}
+        arrival = segments[-1].get("arrival", {}) if isinstance(segments[-1], dict) else {}
+        details["departure_city"] = departure.get("iataCode")
+        details["arrival_city"] = arrival.get("iataCode")
+        departure_at = departure.get("at")
+        if isinstance(departure_at, str) and "T" in departure_at:
+            details["departure_date"] = departure_at.split("T")[0]
+
+    if isinstance(itineraries, list) and len(itineraries) > 1:
+        return_itinerary = itineraries[1] if isinstance(itineraries[1], dict) else {}
+        return_segments = return_itinerary.get("segments", [])
+        if return_segments:
+            return_departure = return_segments[0].get("departure", {})
+            return_at = return_departure.get("at")
+            if isinstance(return_at, str) and "T" in return_at:
+                details["return_date"] = return_at.split("T")[0]
+
+    airline_codes = offer.get("validatingAirlineCodes", [])
+    if airline_codes:
+        details["airline"] = airline_codes[0]
+    elif segments:
+        details["airline"] = segments[0].get("carrierCode")
+
+    if isinstance(travelers, list):
+        details["passengers"] = len(travelers) or 1
+
+    return details
+
+def format_travelers_for_amadeus(frontend_travelers):
+    amadeus_travelers = []
+    for idx, t in enumerate(frontend_travelers, start=1):
+        # Calculate DOB from age (approximate, assumes birthday passed this year)
+        birth_year = datetime.now().year - t.get("age", 30)
+        dob = f"{birth_year}-01-01"  # simple default DOB, can be improved
+
+        traveler = {
+            "id": str(idx),
+            "dateOfBirth": dob,
+            "name": {
+                "firstName": t.get("first_name", "").upper(),
+                "lastName": t.get("last_name", "").upper()
+            },
+            "gender": t.get("gender", "MALE").upper(),  # optional, default MALE
+            "contact": {
+                "emailAddress": t.get("email", "example@example.com")
+            },
+            "documents": [
+                {
+                    "documentType": "PASSPORT",
+                    "number": t.get("passport_number", ""),
+                    "expiryDate": t.get("passport_expiry", "2030-01-01"),
+                    "issuanceCountry": t.get("passport_country", "NG"),
+                    "nationality": t.get("nationality", "NG"),
+                    "holder": True
+                }
+            ]
+        }
+        amadeus_travelers.append(traveler)
+    return amadeus_travelers

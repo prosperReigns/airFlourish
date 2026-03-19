@@ -1,5 +1,4 @@
 from django.db import transaction
-from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.core.cache import cache
 from rest_framework import permissions, status, viewsets
@@ -8,11 +7,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-import json
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.conf import settings
 from app.payments.models import Payment
-from app.payments.services import PaymentVerificationService, merge_payment_metadata
+
 from app.services.amadeus import AmadeusService
 from app.services.booking_engine import BookingEngine
 from app.services.flutterwave import FlutterwaveService
@@ -27,8 +24,8 @@ from app.transactions.services import (
 from .models import FlightBooking
 from .serializers import FlightBookingSerializer
 from app.services.flight_transformer import simplify_flight_offers
-from app.pricing.services import convert_currency
-from app.pricing.models import ExchangeRate
+from app.services.amadeus_transformer import _extract_flight_details
+from app.services.helper_function import _convert_amount, _get_user_currency,_quantize_amount,_to_decimal
 
 @method_decorator(
     name="list",
@@ -107,7 +104,7 @@ class FlightBookingViewSet(viewsets.ModelViewSet):
 
         # Return flights linked to bookings of the logged-in user
         return FlightBooking.objects.filter(booking__user=user)
-    
+
 class FlightBookingCache:
     _offer_prefix = "flight_offer:"
     _payment_prefix = "flight_payment_context:"
@@ -140,107 +137,6 @@ class FlightBookingCache:
             return {}
         return cache.get(f"{cls._payment_prefix}{tx_ref}") or {}
 
-def _get_country_code(user):
-    country = getattr(user, "country", None)
-    if hasattr(country, "code"):
-        return country.code
-    if country:
-        return str(country)
-    return None
-
-def _get_user_currency(user, fallback_currency):
-    country_code = _get_country_code(user)
-    currency_map = getattr(settings, "COUNTRY_CURRENCY_MAP", {})
-    return currency_map.get(country_code, fallback_currency)
-
-def _to_decimal(value):
-    try:
-        return Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError):
-        return None
-
-def _quantize_amount(value):
-    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-def _convert_amount(amount, base_currency, target_currency):
-    if amount is None:
-        return None
-    if base_currency == target_currency:
-        return amount
-    try:
-        return convert_currency(amount, base_currency, target_currency)
-    except ExchangeRate.DoesNotExist:
-        return None
-
-def _extract_flight_details(offer, travelers):
-    details = {}
-    if not isinstance(offer, dict):
-        return details
-
-    itineraries = offer.get("itineraries", [])
-    first_itinerary = itineraries[0] if itineraries else {}
-    segments = first_itinerary.get("segments", []) if isinstance(first_itinerary, dict) else []
-
-    if segments:
-        departure = segments[0].get("departure", {}) if isinstance(segments[0], dict) else {}
-        arrival = segments[-1].get("arrival", {}) if isinstance(segments[-1], dict) else {}
-        details["departure_city"] = departure.get("iataCode")
-        details["arrival_city"] = arrival.get("iataCode")
-        departure_at = departure.get("at")
-        if isinstance(departure_at, str) and "T" in departure_at:
-            details["departure_date"] = departure_at.split("T")[0]
-
-    if isinstance(itineraries, list) and len(itineraries) > 1:
-        return_itinerary = itineraries[1] if isinstance(itineraries[1], dict) else {}
-        return_segments = return_itinerary.get("segments", [])
-        if return_segments:
-            return_departure = return_segments[0].get("departure", {})
-            return_at = return_departure.get("at")
-            if isinstance(return_at, str) and "T" in return_at:
-                details["return_date"] = return_at.split("T")[0]
-
-    airline_codes = offer.get("validatingAirlineCodes", [])
-    if airline_codes:
-        details["airline"] = airline_codes[0]
-    elif segments:
-        details["airline"] = segments[0].get("carrierCode")
-
-    if isinstance(travelers, list):
-        details["passengers"] = len(travelers) or 1
-
-    return details
-
-def format_travelers_for_amadeus(frontend_travelers):
-    amadeus_travelers = []
-    for idx, t in enumerate(frontend_travelers, start=1):
-        # Calculate DOB from age (approximate, assumes birthday passed this year)
-        birth_year = datetime.now().year - t.get("age", 30)
-        dob = f"{birth_year}-01-01"  # simple default DOB, can be improved
-
-        traveler = {
-            "id": str(idx),
-            "dateOfBirth": dob,
-            "name": {
-                "firstName": t.get("first_name", "").upper(),
-                "lastName": t.get("last_name", "").upper()
-            },
-            "gender": t.get("gender", "MALE").upper(),  # optional, default MALE
-            "contact": {
-                "emailAddress": t.get("email", "example@example.com")
-            },
-            "documents": [
-                {
-                    "documentType": "PASSPORT",
-                    "number": t.get("passport_number", ""),
-                    "expiryDate": t.get("passport_expiry", "2030-01-01"),
-                    "issuanceCountry": t.get("passport_country", "NG"),
-                    "nationality": t.get("nationality", "NG"),
-                    "holder": True
-                }
-            ]
-        }
-        amadeus_travelers.append(traveler)
-    return amadeus_travelers
 
 class SecureFlightBookingView(APIView):
     """Endpoint for securely booking a flight. This view handles the entire process of booking a flight, including repricing the flight offer, initiating payment with Flutterwave, creating a unified booking, and returning a payment link to the frontend. It expects the flight offer and traveler details in the request data, and it ensures that all operations are performed atomically to maintain data integrity.

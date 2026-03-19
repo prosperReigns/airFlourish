@@ -1,7 +1,7 @@
 import hmac
 
 from django.utils.decorators import method_decorator
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from .models import Payment
 from .serializers import PaymentSerializer
@@ -104,7 +104,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
     """
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """Admin users can see all payments, regular users can only see their own payments."""

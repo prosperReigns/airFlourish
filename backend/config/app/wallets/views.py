@@ -1,5 +1,6 @@
 from django.utils.decorators import method_decorator
-from rest_framework import generics, permissions
+from rest_framework import generics
+from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 
 from .models import Wallet, LedgerEntry
@@ -16,7 +17,7 @@ from .serializers import WalletSerializer, LedgerEntrySerializer
 class WalletDetailView(generics.RetrieveAPIView):
 
     serializer_class = WalletSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_object(self):
         if getattr(self, "swagger_fake_view", False):
@@ -34,7 +35,7 @@ class WalletDetailView(generics.RetrieveAPIView):
 class WalletLedgerView(generics.ListAPIView):
 
     serializer_class = LedgerEntrySerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
 

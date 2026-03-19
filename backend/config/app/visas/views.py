@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from rest_framework import permissions, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -45,7 +45,7 @@ def _to_decimal(value):
 class VisaApplicationViewSet(viewsets.ModelViewSet):
     queryset = VisaApplication.objects.all()
     serializer_class = VisaApplicationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
@@ -429,7 +429,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
 
 class VisaPaymentVerificationView(APIView):
     authentication_classes = []
-    permission_classes = []
+    permission_classes = [IsAuthenticated, IsAdminUserType]
 
     @swagger_auto_schema(
         operation_description="Verify a visa payment (webhook or manual).",
