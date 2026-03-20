@@ -215,6 +215,17 @@ PATCH /api/transport/transports/{id}/
   "special_requests": "Window seat"
 }
 DELETE /api/transport/transports/{id}/
+PUT /api/transport/bookings/{id}/ (current endpoint)
+{
+  "trip": 1,
+  "passengers": 3,
+  "organization": "Airflourish HQ",
+  "special_requests": "Extra luggage"
+}
+PATCH /api/transport/bookings/{id}/ (current endpoint)
+{
+  "special_requests": "VIP pickup"
+}
 GET /api/transport/transport-reservations/
 POST /api/transport/transport-reservations/ (reservation only)
 {
@@ -300,9 +311,13 @@ POST /api/visas/applications/
 {
   "visa_type": "tourist"
 }
+PUT /api/visas/applications/{id}/
+{
+  "visa_type": "business"
+}
 PATCH /api/visas/applications/{id}/
 {
-  "visa_type": "Business"
+  "visa_type": "tourist"
 }
 POST /api/visas/applications/{id}/documents/
 Content-Type: multipart/form-data
