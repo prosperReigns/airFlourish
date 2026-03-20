@@ -1,3 +1,4 @@
+from django.db.models import F
 from django.utils.decorators import method_decorator
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets
@@ -27,7 +28,7 @@ class InventoryViewSet(viewsets.ModelViewSet):
         if getattr(self, "swagger_fake_view", False):
             return Inventory.objects.none()
         user = self.request.user
-        queryset = Inventory.objects.all()
+        queryset = Inventory.objects.annotate(available_quantity=F("available_quantity"))
         if getattr(user, "user_type", None) == "admin":
             return queryset
         return queryset.filter(available_quantity__gt=0)
