@@ -72,6 +72,8 @@ urlpatterns = [
     path('api/visas/', include('app.visas.urls')),
     path('api/hotels/', include('app.hotels.urls')),
     path('api/transport/', include('app.transport.urls')),
+    path('api/rentals/', include('app.rentals.urls')),
+    path('api/inventory/', include('app.inventory.urls')),
     path('api/payments/', include('app.payments.urls')),
     path("api/transactions", include("app.transactions.urls")),
     path("api/", include("app.wallets.urls")),

@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from app.bookings.serializers import BookingSerializer
 from .models import Trip, Vehicle, TripAssignment, TransportBooking
 
 
@@ -30,6 +32,9 @@ class TripSerializer(serializers.ModelSerializer):
         ]
 
     def get_available_seats(self, obj):
+        available = getattr(obj, "available_seats", None)
+        if available is not None:
+            return available
         return obj.capacity - obj.booked_seats
 
     def validate_capacity(self, value):
@@ -73,6 +78,7 @@ class TripAssignmentSerializer(serializers.ModelSerializer):
 
 class TransportBookingSerializer(serializers.ModelSerializer):
     trip_detail = TripSerializer(source="trip", read_only=True)
+    booking_detail = BookingSerializer(source="booking", read_only=True)
 
     class Meta:
         model = TransportBooking
@@ -81,8 +87,11 @@ class TransportBookingSerializer(serializers.ModelSerializer):
             "trip",
             "trip_detail",
             "user",
+            "booking",
+            "booking_detail",
             "passengers",
             "organization",
+            "special_requests",
             "status",
             "reference",
             "expires_at",
@@ -91,6 +100,7 @@ class TransportBookingSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "user",
+            "booking",
             "status",
             "reference",
             "created_at",

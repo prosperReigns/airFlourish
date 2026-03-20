@@ -43,10 +43,13 @@ class Inventory(models.Model):
         indexes = [
             models.Index(fields=["resource_type"]),
             models.Index(fields=["start_time"]),
+            models.Index(fields=["end_time"]),
             models.Index(fields=["pickup_location"]),
             models.Index(fields=["dropoff_location"]),
         ]
-        models.CheckConstraint(
-            condition=models.Q(available_quantity__gte=0),
-            name="available_quantity_non_negative"
-        )
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(available_quantity__gte=0),
+                name="inventory_available_quantity_non_negative",
+            ),
+        ]
