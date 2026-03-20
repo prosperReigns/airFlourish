@@ -16,7 +16,8 @@ from app.transactions.services import (
     mark_transaction_failed,
     mark_transaction_success,
 )
-from app.transport.models import TransportReservation, TransportService
+from app.rentals.models import CarRental
+from app.transport.models import TransportBooking
 from app.visas.models import VisaApplication
 
 logger = logging.getLogger(__name__)
@@ -29,21 +30,17 @@ def _confirm_hotel_booking(booking):
 
 
 def _confirm_transport_booking(booking):
-    service = TransportService.objects.filter(booking=booking).first()
-    if not service:
-        return
+    transport_booking = TransportBooking.objects.filter(booking=booking).first()
+    if transport_booking:
+        transport_booking.status = "confirmed"
+        transport_booking.save(update_fields=["status"])
 
-    passengers_count = service.passengers or 1
-    TransportReservation.objects.get_or_create(
-        service=service,
-        booking=booking,
-        defaults={
-            "reserved_by": booking.user,
-            "passengers_count": passengers_count,
-            "special_requests": service.special_requests or "",
-            "status": "confirmed",
-        },
-    )
+
+def _confirm_rental_booking(booking):
+    rental = CarRental.objects.filter(booking=booking).first()
+    if rental:
+        rental.status = "confirmed"
+        rental.save(update_fields=["status"])
 
 
 def _confirm_visa_booking(booking):
@@ -113,6 +110,8 @@ def process_successful_payment(self, payment_id):
             _confirm_hotel_booking(booking)
         elif booking.service_type == "transport":
             _confirm_transport_booking(booking)
+        elif booking.service_type == "rental":
+            _confirm_rental_booking(booking)
         elif booking.service_type == "visa":
             _confirm_visa_booking(booking)
 

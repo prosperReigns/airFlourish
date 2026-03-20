@@ -1,6 +1,13 @@
 from django.db import models
 from django.conf import settings
 
+from app.bookings.models import Booking
+from app.services.reference_generator import generate_booking_reference
+
+
+def generate_transport_reference():
+    return generate_booking_reference("TRP")
+
 class Trip(models.Model):
     STATUS_CHOICES = (
         ("scheduled", "Scheduled"),
@@ -49,11 +56,15 @@ class Trip(models.Model):
         indexes = [
             models.Index(fields=["departure_time"]),
             models.Index(fields=["status"]),
+            models.Index(fields=["pickup_location"]),
+            models.Index(fields=["dropoff_location"]),
         ]
-        models.CheckConstraint(
-            condition=models.Q(capacity__gte=1),
-            name="capacity_gte_1"
-        )
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(capacity__gte=1),
+                name="trip_capacity_gte_1",
+            ),
+        ]
     
 class Vehicle(models.Model):
     VEHICLE_TYPES = (
@@ -99,11 +110,19 @@ class TripAssignment(models.Model):
 class TransportBooking(models.Model):
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="bookings")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    booking = models.OneToOneField(
+        Booking,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="transport_booking",
+    )
 
     passengers = models.PositiveIntegerField(default=1)
     expires_at = models.DateTimeField(null=True, blank=True)
 
     organization = models.CharField(max_length=150, null=True, blank=True)
+    special_requests = models.TextField(blank=True)
 
     status = models.CharField(
         max_length=20,
@@ -116,7 +135,11 @@ class TransportBooking(models.Model):
         ),
         default="pending"
     )
-    reference = models.CharField(max_length=100, unique=True)
+    reference = models.CharField(
+        max_length=100,
+        unique=True,
+        default=generate_transport_reference,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     class Meta:
@@ -125,8 +148,11 @@ class TransportBooking(models.Model):
             models.Index(fields=["trip"]),
             models.Index(fields=["user"]),
             models.Index(fields=["status"]),
+            models.Index(fields=["reference"]),
         ]
-        models.CheckConstraint(
-            condition=models.Q(passengers__gte=1),
-            name="passengers_gte_1"
-        )
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(passengers__gte=1),
+                name="transport_passengers_gte_1",
+            ),
+        ]

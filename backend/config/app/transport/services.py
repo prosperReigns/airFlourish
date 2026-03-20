@@ -1,9 +1,12 @@
 from django.db import transaction
+
 from .models import Trip, TransportBooking
 
 
 @transaction.atomic
-def create_trip_booking(user, trip_id, passengers, organization=None):
+def create_trip_booking(
+    *, user, trip_id, passengers, organization=None, booking=None, special_requests=None
+):
     trip = Trip.objects.select_for_update().get(id=trip_id)
 
     if not trip.is_shared and trip.booked_seats > 0:
@@ -15,8 +18,10 @@ def create_trip_booking(user, trip_id, passengers, organization=None):
     booking = TransportBooking.objects.create(
         trip=trip,
         user=user,
+        booking=booking,
         passengers=passengers,
         organization=organization,
+        special_requests=special_requests or "",
         status="pending"
     )
 

@@ -70,7 +70,17 @@ class TripAssignmentAdmin(admin.ModelAdmin):
 
 @admin.register(TransportBooking)
 class TransportBookingAdmin(admin.ModelAdmin):
-    list_display = ("id", "trip", "user", "passengers", "status", "organisation", "reference", "created_at", "expires_at")
+    list_display = (
+        "id",
+        "trip",
+        "user",
+        "passengers",
+        "status",
+        "organization",
+        "reference",
+        "created_at",
+        "expires_at",
+    )
     list_filter = ("status", "created_at")
     search_fields = ("user__email", "trip__name", "organization")
     autocomplete_fields = ("trip", "user")

@@ -1,9 +1,18 @@
 from django.db import models
 from django.conf import settings
 
+from app.bookings.models import Booking
+
 class CarRental(models.Model):
     vehicle = models.ForeignKey("transport.Vehicle", on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    booking = models.OneToOneField(
+        Booking,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="car_rental",
+    )
 
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
@@ -21,12 +30,17 @@ class CarRental(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    class meta:
+    class Meta:
         indexes = [
-        models.Index(fields=["start_date"]),
-        models.Index(fields=["vehicle"]),
-    ]
-        models.CheckConstraint(
-            condition=models.Q(end_date__gt=models.F("start_date")),
-            name="end_date_after_start_date"
-        )
+            models.Index(fields=["start_date"]),
+            models.Index(fields=["end_date"]),
+            models.Index(fields=["vehicle"]),
+            models.Index(fields=["user"]),
+            models.Index(fields=["status"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(end_date__gt=models.F("start_date")),
+                name="rental_end_date_after_start_date",
+            ),
+        ]

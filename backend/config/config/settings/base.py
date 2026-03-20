@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "app.visas",
     "app.payments",
     "app.transport",
+    "app.rentals",
     "app.notifications",
     "app.transactions",
     "app.wallets",

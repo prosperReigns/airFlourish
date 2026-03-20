@@ -3,22 +3,22 @@ from django.conf import settings
 import uuid
 
 class Booking(models.Model):
-
     SERVICE_TYPES = [
-            ('flight', 'Flight Booking'),
-            ('private_jet', 'Private Jet Charter'),
-            ('visa', 'Visa Service'),
-            ('hotel', 'Hotel Reservation'),
-            ('transport', 'Transport Service'),
-            ('passport', 'Passport Renewal'),
-            ('protocol', 'Airport Protocol'),
-        ]
+        ("flight", "Flight Booking"),
+        ("private_jet", "Private Jet Charter"),
+        ("visa", "Visa Service"),
+        ("hotel", "Hotel Reservation"),
+        ("transport", "Transport Service"),
+        ("rental", "Car Rental"),
+        ("passport", "Passport Renewal"),
+        ("protocol", "Airport Protocol"),
+    ]
     STATUS_CHOICES = [
-            ('pending', 'Pending'),
-            ('confirmed', 'Confirmed'),
-            ('cancelled', 'Cancelled'),
-            ('failed', 'Failed'),
-        ]
+        ("pending", "Pending"),
+        ("confirmed", "Confirmed"),
+        ("cancelled", "Cancelled"),
+        ("failed", "Failed"),
+    ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     service_type = models.CharField(max_length=50, choices=SERVICE_TYPES)
