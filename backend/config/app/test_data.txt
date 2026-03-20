@@ -203,7 +203,7 @@ POST /api/transport/bookings/ (creates booking + payment)
 {
   "trip": 1,
   "passengers": 2,
-  "organization": "AirFlourish",
+  "organization": "Airflourish",
   "special_requests": "Need child seat",
   "payment_method": "card"
 }
