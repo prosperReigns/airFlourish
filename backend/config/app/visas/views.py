@@ -81,7 +81,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
         except (TypeError, ValueError, get_user_model().DoesNotExist):
             raise ValidationError("Specified user does not exist")
 
-    def _ensure_internal_fields_allowed(self, request, allow_user_assignment=False):
+    def _validate_internal_fields_access(self, request, allow_user_assignment=False):
         forbidden_fields = {"internal_notes", "embassy_review_status", "user", "agent"}
         if allow_user_assignment:
             forbidden_fields = forbidden_fields.difference({"user"})
@@ -97,7 +97,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        response = self._ensure_internal_fields_allowed(
+        response = self._validate_internal_fields_access(
             request, allow_user_assignment=self._is_agent(request.user)
         )
         if response:
@@ -170,7 +170,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
             ok, error = self._ensure_editable(application)
             if not ok:
                 return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
-        response = self._ensure_internal_fields_allowed(request)
+        response = self._validate_internal_fields_access(request)
         if response:
             return response
         return super().update(request, *args, **kwargs)
@@ -181,7 +181,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
             ok, error = self._ensure_editable(application)
             if not ok:
                 return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
-        response = self._ensure_internal_fields_allowed(request)
+        response = self._validate_internal_fields_access(request)
         if response:
             return response
         return super().partial_update(request, *args, **kwargs)
@@ -547,7 +547,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
             application.transition_to(VisaApplication.STATUS_UNDER_EMBASSY_REVIEW)
         except ValidationError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        application.embassy_review_status = "in_review"
+        application.embassy_review_status = VisaApplication.EMBASSY_REVIEW_IN_REVIEW
         application.save(update_fields=["embassy_review_status", "updated_at"])
         return Response({"status": application.status}, status=status.HTTP_200_OK)
 

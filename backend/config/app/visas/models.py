@@ -41,6 +41,8 @@ class VisaApplication(models.Model):
     STATUS_UNDER_EMBASSY_REVIEW = "under_embassy_review"
     STATUS_APPROVED = "approved"
     STATUS_REJECTED = "rejected"
+    EMBASSY_REVIEW_PENDING = "pending"
+    EMBASSY_REVIEW_IN_REVIEW = "in_review"
 
     STATUS_CHOICES = (
         (STATUS_DRAFT, "Draft"),
@@ -99,7 +101,9 @@ class VisaApplication(models.Model):
         choices=STATUS_CHOICES,
         default=STATUS_DRAFT,
     )
-    embassy_review_status = models.CharField(max_length=50, blank=True, default="pending")
+    embassy_review_status = models.CharField(
+        max_length=50, blank=True, default=EMBASSY_REVIEW_PENDING
+    )
     internal_notes = models.TextField(blank=True)
     is_locked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
