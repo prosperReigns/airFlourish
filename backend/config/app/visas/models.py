@@ -128,7 +128,9 @@ class VisaApplication(models.Model):
             candidates = [doc for doc in documents if doc.document_type == doc_type]
             if not candidates:
                 continue
-            if not any(getattr(doc.file, "size", 0) for doc in candidates if doc.file):
+            if not any(
+                getattr(doc.file, "size", 0) > 0 for doc in candidates if doc.file
+            ):
                 errors[doc_type] = "Uploaded document is empty or invalid"
         return errors
 

@@ -56,8 +56,10 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
             return VisaApplication.objects.none()
         user = self.request.user
         base_queryset = VisaApplication.objects.select_related(
-            "user", "agent", "visa_type", "booking"
+            "user", "visa_type", "booking"
         ).prefetch_related("documents")
+        if getattr(user, "user_type", None) in {"admin", "agent"}:
+            base_queryset = base_queryset.select_related("agent")
         if getattr(user, "user_type", None) == "admin":
             return base_queryset
         if getattr(user, "user_type", None) == "agent":

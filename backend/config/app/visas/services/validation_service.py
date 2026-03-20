@@ -6,6 +6,10 @@ def _has_file_content(document):
     return bool(document.file and getattr(document.file, "size", 0))
 
 
+def _has_documents_with_content(documents):
+    return any(_has_file_content(doc) for doc in documents)
+
+
 def validate_application(application):
     errors = {}
 
@@ -32,12 +36,12 @@ def validate_application(application):
             if not document_qs:
                 missing.append(doc_type)
                 continue
-            if not any(_has_file_content(doc) for doc in document_qs):
+            if not _has_documents_with_content(document_qs):
                 missing.append(doc_type)
         if missing:
             errors["documents"] = f"Missing documents: {', '.join(missing)}"
     else:
-        if not any(_has_file_content(doc) for doc in documents):
+        if not _has_documents_with_content(documents):
             errors["documents"] = "At least one document is required"
 
     quality_errors = application.document_quality_errors(required_docs)
