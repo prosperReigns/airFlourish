@@ -2,6 +2,14 @@ from django.conf import settings
 from app.visas.constants import get_default_documents
 
 
+def _has_file_content(document):
+    return bool(document.file and getattr(document.file, "size", 0))
+
+
+def _has_documents_with_content(documents):
+    return any(_has_file_content(doc) for doc in documents)
+
+
 def validate_application(application):
     errors = {}
 
@@ -22,15 +30,22 @@ def validate_application(application):
     documents = application.documents.all()
 
     if required_docs:
-        missing = [
-            doc_type
-            for doc_type in required_docs
-            if not documents.filter(document_type=doc_type).exists()
-        ]
+        missing = []
+        for doc_type in required_docs:
+            document_qs = list(documents.filter(document_type=doc_type))
+            if not document_qs:
+                missing.append(doc_type)
+                continue
+            if not _has_documents_with_content(document_qs):
+                missing.append(doc_type)
         if missing:
             errors["documents"] = f"Missing documents: {', '.join(missing)}"
     else:
-        if not documents.exists():
+        if not _has_documents_with_content(documents):
             errors["documents"] = "At least one document is required"
+
+    quality_errors = application.document_quality_errors(required_docs)
+    if quality_errors:
+        errors["document_quality"] = quality_errors
 
     return (len(errors) == 0), errors

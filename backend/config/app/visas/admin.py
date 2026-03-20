@@ -11,12 +11,14 @@ class VisaTypeAdmin(admin.ModelAdmin):
 class VisaApplicationAdmin(admin.ModelAdmin):
     list_display = (
         "user",
+        "agent",
         "visa_type",
         "status",
+        "embassy_review_status",
         "is_locked",
         "created_at",
     )
-    list_filter = ("status", "is_locked")
+    list_filter = ("status", "embassy_review_status", "is_locked")
 
 
 @admin.register(VisaDocument)
