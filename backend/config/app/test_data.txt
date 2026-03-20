@@ -195,86 +195,84 @@ GET /api/hotels/admin-hotels/get_hotel/{hotel_id}/ (legacy)
 GET /api/hotels/admin-hotels/get_all_hotels/ (legacy)
 
 6. Transports (user)
-GET /api/transport/transport-options/
-GET /api/transport/transport-options/{id}/
-GET /api/transport/transports/
-POST /api/transport/transports/ (creates booking)
+GET /api/transport/trips/
+GET /api/transport/trips/{id}/
+GET /api/transport/trips/search/?pickup=Lagos&dropoff=Victoria%20Island&date=2026-05-12
+GET /api/transport/bookings/
+POST /api/transport/bookings/ (creates booking + payment)
 {
-  "transport_id": 1,
+  "trip": 1,
   "passengers": 2,
-  "special_requests": "Need child seat"
+  "organization": "AirFlourish",
+  "special_requests": "Need child seat",
+  "payment_method": "card"
 }
-GET /api/transport/transports/{id}/
-PUT /api/transport/transports/{id}/
+GET /api/transport/bookings/{id}/
+PUT /api/transport/bookings/{id}/
 {
   "passengers": 3,
   "special_requests": "Extra luggage"
 }
-PATCH /api/transport/transports/{id}/
+PATCH /api/transport/bookings/{id}/
 {
   "special_requests": "Window seat"
 }
-DELETE /api/transport/transports/{id}/
-GET /api/transport/transport-reservations/
-POST /api/transport/transport-reservations/ (reservation only)
-{
-  "transport_id": 1,
-  "passengers": 2,
-  "special_requests": "Need wheelchair access"
-}
-GET /api/transport/transport-reservations/{id}/
-PUT /api/transport/transport-reservations/{id}/
-{
-  "transport_id": 1,
-  "passengers": 4
-}
-PATCH /api/transport/transport-reservations/{id}/
-{
-  "special_requests": "Pickup with sign"
-}
-DELETE /api/transport/transport-reservations/{id}/
-POST /api/transport/transport-reservations/{id}/cancel/
-GET /api/transport/search/?pickup=Lagos&dropoff=Victoria&vehicle_type=sedan
+POST /api/transport/bookings/{id}/cancel_booking/
 
 7. Transports (admin)
-GET /api/transport/admin-transports/
-POST /api/transport/admin-transports/
+GET /api/transport/admin/trips/
+POST /api/transport/admin/trips/
 {
-  "vehicle_type": "van",
-  "transport_name": "Airflourish Van",
+  "name": "Airport Shuttle",
   "pickup_location": "Lagos Airport",
   "dropoff_location": "Victoria Island",
-  "price_per_passenger": 2000.00,
-  "currency": "NGN"
+  "departure_time": "2026-05-12T10:00:00Z",
+  "arrival_time": "2026-05-12T11:00:00Z",
+  "capacity": 12,
+  "price_per_seat": 2000.00,
+  "currency": "NGN",
+  "is_shared": true
 }
-GET /api/transport/admin-transports/{id}/
-PUT /api/transport/admin-transports/{id}/
+GET /api/transport/admin/trips/{id}/
+PUT /api/transport/admin/trips/{id}/
 {
-  "price_per_passenger": 2500.00
+  "name": "Airport Shuttle Updated",
+  "pickup_location": "Lagos Airport",
+  "dropoff_location": "Lekki Phase 1",
+  "departure_time": "2026-05-12T10:30:00Z",
+  "arrival_time": "2026-05-12T11:30:00Z",
+  "capacity": 10,
+  "price_per_seat": 2500.00,
+  "currency": "NGN",
+  "is_shared": false
 }
-PATCH /api/transport/admin-transports/{id}/
+PATCH /api/transport/admin/trips/{id}/
 {
-  "transport_name": "Airflourish Van XL"
+  "status": "cancelled"
 }
-DELETE /api/transport/admin-transports/{id}/
-GET /api/transport/admin-transport-reservations/
-POST /api/transport/admin-transport-reservations/
+DELETE /api/transport/admin/trips/{id}/
+POST /api/transport/admin/trips/{id}/start_trip/
+POST /api/transport/admin/trips/{id}/complete_trip/
+GET /api/transport/admin/assignments/
+POST /api/transport/admin/assignments/
 {
-  "service": 1,
-  "passengers_count": 1,
-  "special_requests": "VIP pickup"
+  "trip": 1,
+  "vehicle": 1,
+  "driver": 5
 }
-GET /api/transport/admin-transport-reservations/{id}/
-PUT /api/transport/admin-transport-reservations/{id}/
+GET /api/transport/admin/assignments/{id}/
+PUT /api/transport/admin/assignments/{id}/
 {
-  "service": 1,
-  "passengers_count": 2
+  "trip": 1,
+  "vehicle": 2,
+  "driver": 6,
+  "status": "active"
 }
-PATCH /api/transport/admin-transport-reservations/{id}/
+PATCH /api/transport/admin/assignments/{id}/
 {
-  "special_requests": "VIP"
+  "status": "completed"
 }
-DELETE /api/transport/admin-transport-reservations/{id}/
+DELETE /api/transport/admin/assignments/{id}/
 
 8. Visas (user workflow)
 GET /api/visas/visa-types/?country=NG
@@ -300,9 +298,13 @@ POST /api/visas/applications/
 {
   "visa_type": "tourist"
 }
+PUT /api/visas/applications/{id}/
+{
+  "visa_type": "business"
+}
 PATCH /api/visas/applications/{id}/
 {
-  "visa_type": "Business"
+  "visa_type": "business"
 }
 POST /api/visas/applications/{id}/documents/
 Content-Type: multipart/form-data
