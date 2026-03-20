@@ -121,7 +121,7 @@ class VisaApplicationFlowTests(VisaBaseTestCase):
         self.assertEqual(validate.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("document_quality", validate.data.get("errors", {}))
         application.refresh_from_db()
-        self.assertEqual(application.status, VisaApplication.STATUS_DRAFT)
+        self.assertEqual(application.status, VisaApplication.STATUS_INCOMPLETE)
 
         self.client.post(
             f"{APPLICATIONS_URL}{app_id}/documents/",

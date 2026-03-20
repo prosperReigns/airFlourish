@@ -55,11 +55,14 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
         if getattr(self, "swagger_fake_view", False):
             return VisaApplication.objects.none()
         user = self.request.user
+        base_queryset = VisaApplication.objects.select_related(
+            "user", "agent", "visa_type", "booking"
+        ).prefetch_related("documents")
         if getattr(user, "user_type", None) == "admin":
-            return VisaApplication.objects.all()
+            return base_queryset
         if getattr(user, "user_type", None) == "agent":
-            return VisaApplication.objects.filter(models.Q(user=user) | models.Q(agent=user))
-        return VisaApplication.objects.filter(user=user)
+            return base_queryset.filter(models.Q(user=user) | models.Q(agent=user))
+        return base_queryset.filter(user=user)
 
     def _is_admin(self, user):
         return getattr(user, "user_type", None) == "admin"
@@ -221,24 +224,23 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                 return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"status": application.status}, status=status.HTTP_200_OK)
 
-        application.status = VisaApplication.STATUS_DRAFT
+        application.status = VisaApplication.STATUS_INCOMPLETE
         application.save(update_fields=["status", "updated_at"])
         return Response(
             {"status": application.status, "errors": errors},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    def _initiate_payment(self, request, application):
+    def _initiate_payment(self, request, application, allowed_statuses=None):
         if application.is_locked:
             return Response(
                 {"error": "Application is locked and cannot be paid"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if application.status not in {
-            VisaApplication.STATUS_READY_FOR_SUBMISSION,
-            VisaApplication.STATUS_READY_FOR_PAYMENT,
-        }:
+        if allowed_statuses is None:
+            allowed_statuses = {VisaApplication.STATUS_READY_FOR_SUBMISSION}
+        if application.status not in allowed_statuses:
             return Response(
                 {"error": "Application is not ready for payment"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -432,10 +434,51 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
     )
     def checkout(self, request, pk=None):
         application = self.get_object()
-        return self._initiate_payment(request, application)
+        return self._initiate_payment(
+            request,
+            application,
+            allowed_statuses={
+                VisaApplication.STATUS_READY_FOR_SUBMISSION,
+                VisaApplication.STATUS_READY_FOR_PAYMENT,
+            },
+        )
 
     @action(detail=True, methods=["post"], url_path="pay")
-    @swagger_auto_schema(operation_description="Pay for a visa application.")
+    @swagger_auto_schema(
+        operation_description="Pay for a visa application.",
+        manual_parameters=[
+            openapi.Parameter(
+                "Idempotency-Key",
+                openapi.IN_HEADER,
+                description="Required for payment",
+                type=openapi.TYPE_STRING,
+            )
+        ],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["amount", "currency"],
+            properties={
+                "amount": openapi.Schema(type=openapi.TYPE_NUMBER),
+                "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                "payment_method": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Optional: card or bank_transfer",
+                ),
+            },
+        ),
+        responses={
+            201: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "payment_link": openapi.Schema(type=openapi.TYPE_STRING),
+                    "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
+                    "booking_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                    "payment_options": openapi.Schema(type=openapi.TYPE_STRING),
+                    "bank_transfer_available": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                },
+            )
+        },
+    )
     def pay(self, request, pk=None):
         application = self.get_object()
         return self._initiate_payment(request, application)
