@@ -2,6 +2,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import transaction, models
 from django.utils.decorators import method_decorator
@@ -56,37 +57,128 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if getattr(user, "user_type", None) == "admin":
             return VisaApplication.objects.all()
+        if getattr(user, "user_type", None) == "agent":
+            return VisaApplication.objects.filter(models.Q(user=user) | models.Q(agent=user))
         return VisaApplication.objects.filter(user=user)
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user, status=VisaApplication.STATUS_DRAFT)
+    def _is_admin(self, user):
+        return getattr(user, "user_type", None) == "admin"
+
+    def _is_agent(self, user):
+        return getattr(user, "user_type", None) == "agent"
+
+    def _resolve_target_user(self, payload):
+        user_value = payload.get("user")
+        if user_value in (None, ""):
+            return None
+        try:
+            return get_user_model().objects.get(id=user_value)
+        except (TypeError, ValueError, get_user_model().DoesNotExist):
+            raise ValidationError("Specified user does not exist")
+
+    def _ensure_internal_fields_allowed(self, request, allow_user_assignment=False):
+        forbidden_fields = {"internal_notes", "embassy_review_status", "user", "agent"}
+        if allow_user_assignment:
+            forbidden_fields = forbidden_fields.difference({"user"})
+        if not self._is_admin(request.user):
+            restricted = forbidden_fields.intersection(request.data.keys())
+            if restricted:
+                return Response(
+                    {"error": "You do not have permission to modify internal fields."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        return None
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        response = self._ensure_internal_fields_allowed(
+            request, allow_user_assignment=self._is_agent(request.user)
+        )
+        if response:
+            return response
+
+        user = request.user
+        target_user = user
+        agent = None
+
+        if self._is_agent(user):
+            agent = user
+            try:
+                target_user = self._resolve_target_user(request.data) or user
+            except ValidationError as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        elif self._is_admin(user):
+            try:
+                resolved_user = self._resolve_target_user(request.data)
+            except ValidationError as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            if resolved_user:
+                target_user = resolved_user
+        else:
+            if "user" in request.data or "agent" in request.data:
+                return Response(
+                    {"error": "User assignment is not allowed"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        serializer.save(user=target_user, agent=agent, status=VisaApplication.STATUS_DRAFT)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def _ensure_editable(self, application):
         if application.is_locked:
             return False, "Application is locked and cannot be edited"
         if application.status in {
             VisaApplication.STATUS_SUBMITTED,
+            VisaApplication.STATUS_UNDER_EMBASSY_REVIEW,
             VisaApplication.STATUS_UNDER_REVIEW,
             VisaApplication.STATUS_APPROVED,
             VisaApplication.STATUS_REJECTED,
         }:
             return False, f"Cannot edit application in status {application.status}"
-        if application.status == VisaApplication.STATUS_READY_FOR_PAYMENT:
+        if application.status in {
+            VisaApplication.STATUS_READY_FOR_SUBMISSION,
+            VisaApplication.STATUS_READY_FOR_PAYMENT,
+            VisaApplication.STATUS_PAID,
+        }:
             return False, "Cannot edit after validation"
         return True, None
 
+    def _is_internal_only_update(self, request):
+        internal_fields = {"internal_notes", "embassy_review_status"}
+        if not request.data:
+            return False
+        return set(request.data.keys()).issubset(internal_fields)
+
+    def _has_successful_payment(self, application):
+        if application.booking_id:
+            if Payment.objects.filter(
+                booking_id=application.booking_id, status="succeeded"
+            ).exists():
+                return True
+        return application.payments.filter(status=VisaPayment.STATUS_SUCCESSFUL).exists()
+
     def update(self, request, *args, **kwargs):
         application = self.get_object()
-        ok, error = self._ensure_editable(application)
-        if not ok:
-            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+        if not (self._is_admin(request.user) and self._is_internal_only_update(request)):
+            ok, error = self._ensure_editable(application)
+            if not ok:
+                return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+        response = self._ensure_internal_fields_allowed(request)
+        if response:
+            return response
         return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
         application = self.get_object()
-        ok, error = self._ensure_editable(application)
-        if not ok:
-            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+        if not (self._is_admin(request.user) and self._is_internal_only_update(request)):
+            ok, error = self._ensure_editable(application)
+            if not ok:
+                return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+        response = self._ensure_internal_fields_allowed(request)
+        if response:
+            return response
         return super().partial_update(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="documents")
@@ -115,10 +207,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
         ok, error = self._ensure_editable(application)
         if not ok:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
-        if application.status not in {
-            VisaApplication.STATUS_DRAFT,
-            VisaApplication.STATUS_INCOMPLETE,
-        }:
+        if application.status not in {VisaApplication.STATUS_DRAFT, VisaApplication.STATUS_INCOMPLETE}:
             return Response(
                 {"error": "Validation is only allowed in draft or incomplete status"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -127,63 +216,29 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
         is_valid, errors = validate_application(application)
         if is_valid:
             try:
-                application.transition_to(VisaApplication.STATUS_READY_FOR_PAYMENT)
+                application.transition_to(VisaApplication.STATUS_READY_FOR_SUBMISSION)
             except ValidationError as exc:
                 return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"status": application.status}, status=status.HTTP_200_OK)
 
-        application.status = VisaApplication.STATUS_INCOMPLETE
+        application.status = VisaApplication.STATUS_DRAFT
         application.save(update_fields=["status", "updated_at"])
         return Response(
             {"status": application.status, "errors": errors},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    @action(detail=True, methods=["post"], url_path="checkout")
-    @swagger_auto_schema(
-        operation_description="Initiate visa payment (idempotent).",
-        manual_parameters=[
-            openapi.Parameter(
-                "Idempotency-Key",
-                openapi.IN_HEADER,
-                description="Required for checkout",
-                type=openapi.TYPE_STRING,
-            )
-        ],
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=["amount", "currency"],
-            properties={
-                "amount": openapi.Schema(type=openapi.TYPE_NUMBER),
-                "currency": openapi.Schema(type=openapi.TYPE_STRING),
-                "payment_method": openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Optional: card or bank_transfer",
-                ),
-            },
-        ),
-        responses={
-            201: openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    "payment_link": openapi.Schema(type=openapi.TYPE_STRING),
-                    "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
-                    "booking_id": openapi.Schema(type=openapi.TYPE_INTEGER),
-                    "payment_options": openapi.Schema(type=openapi.TYPE_STRING),
-                    "bank_transfer_available": openapi.Schema(type=openapi.TYPE_BOOLEAN),
-                },
-            )
-        },
-    )
-    def checkout(self, request, pk=None):
-        application = self.get_object()
+    def _initiate_payment(self, request, application):
         if application.is_locked:
             return Response(
                 {"error": "Application is locked and cannot be paid"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if application.status != VisaApplication.STATUS_READY_FOR_PAYMENT:
+        if application.status not in {
+            VisaApplication.STATUS_READY_FOR_SUBMISSION,
+            VisaApplication.STATUS_READY_FOR_PAYMENT,
+        }:
             return Response(
                 {"error": "Application is not ready for payment"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -250,7 +305,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
         payment_response = FlutterwaveService().initiate_card_payment(
             amount=amount,
             currency=currency,
-            customer_email=request.user.email,
+            customer_email=application.user.email,
             tx_ref=tx_ref,
             payment_options=payment_options,
         )
@@ -262,7 +317,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
 
         booking = application.booking
         if booking:
-            if booking.user_id != request.user.id:
+            if booking.user_id != application.user_id:
                 return Response(
                     {"error": "Booking does not belong to this user"},
                     status=status.HTTP_403_FORBIDDEN,
@@ -288,7 +343,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                 booking.save(update_fields=["total_price", "currency"])
         else:
             booking = BookingEngine.create_booking(
-                user=request.user,
+                user=application.user,
                 service_type="visa",
                 total_price=amount,
                 currency=currency,
@@ -339,6 +394,52 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=["post"], url_path="checkout")
+    @swagger_auto_schema(
+        operation_description="Initiate visa payment (idempotent).",
+        manual_parameters=[
+            openapi.Parameter(
+                "Idempotency-Key",
+                openapi.IN_HEADER,
+                description="Required for checkout",
+                type=openapi.TYPE_STRING,
+            )
+        ],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["amount", "currency"],
+            properties={
+                "amount": openapi.Schema(type=openapi.TYPE_NUMBER),
+                "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                "payment_method": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Optional: card or bank_transfer",
+                ),
+            },
+        ),
+        responses={
+            201: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "payment_link": openapi.Schema(type=openapi.TYPE_STRING),
+                    "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
+                    "booking_id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                    "payment_options": openapi.Schema(type=openapi.TYPE_STRING),
+                    "bank_transfer_available": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                },
+            )
+        },
+    )
+    def checkout(self, request, pk=None):
+        application = self.get_object()
+        return self._initiate_payment(request, application)
+
+    @action(detail=True, methods=["post"], url_path="pay")
+    @swagger_auto_schema(operation_description="Pay for a visa application.")
+    def pay(self, request, pk=None):
+        application = self.get_object()
+        return self._initiate_payment(request, application)
+
     @action(detail=True, methods=["post"], url_path="submit")
     @swagger_auto_schema(operation_description="Submit a paid application.")
     def submit(self, request, pk=None):
@@ -349,7 +450,16 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if application.status != VisaApplication.STATUS_PAID:
+        if application.status not in {
+            VisaApplication.STATUS_READY_FOR_SUBMISSION,
+            VisaApplication.STATUS_PAID,
+        }:
+            return Response(
+                {"error": "Application must be ready for submission"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not self._has_successful_payment(application):
             return Response(
                 {"error": "Payment is required before submission"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -371,7 +481,7 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
         return Response({"status": application.status}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsAdminUserType])
-    @swagger_auto_schema(operation_description="Move application to under review (admin).")
+    @swagger_auto_schema(operation_description="Move application to embassy review (admin).")
     def review(self, request, pk=None):
         application = self.get_object()
         if application.status != VisaApplication.STATUS_SUBMITTED:
@@ -380,18 +490,20 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            application.transition_to(VisaApplication.STATUS_UNDER_REVIEW)
+            application.transition_to(VisaApplication.STATUS_UNDER_EMBASSY_REVIEW)
         except ValidationError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        application.embassy_review_status = "in_review"
+        application.save(update_fields=["embassy_review_status", "updated_at"])
         return Response({"status": application.status}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsAdminUserType])
     @swagger_auto_schema(operation_description="Approve application (admin).")
     def approve(self, request, pk=None):
         application = self.get_object()
-        if application.status != VisaApplication.STATUS_UNDER_REVIEW:
+        if application.status != VisaApplication.STATUS_UNDER_EMBASSY_REVIEW:
             return Response(
-                {"error": "Application must be under review"},
+                {"error": "Application must be under embassy review"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -412,9 +524,9 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(operation_description="Reject application (admin).")
     def reject(self, request, pk=None):
         application = self.get_object()
-        if application.status != VisaApplication.STATUS_UNDER_REVIEW:
+        if application.status != VisaApplication.STATUS_UNDER_EMBASSY_REVIEW:
             return Response(
-                {"error": "Application must be under review"},
+                {"error": "Application must be under embassy review"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:

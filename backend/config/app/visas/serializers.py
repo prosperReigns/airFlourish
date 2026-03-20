@@ -2,6 +2,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from .models import VisaApplication, VisaDocument, VisaPayment, VisaType
+from .services.validation_service import validate_application
 from .constants import get_default_documents
 
 
@@ -94,7 +95,9 @@ class VisaApplicationSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    agent = serializers.PrimaryKeyRelatedField(read_only=True)
     required_documents = serializers.SerializerMethodField()
+    document_validation_errors = serializers.SerializerMethodField()
     visa_type_details = serializers.SerializerMethodField()
     visa_type_price = serializers.SerializerMethodField()
     visa_type_required_documents = serializers.SerializerMethodField()
@@ -105,11 +108,15 @@ class VisaApplicationSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "user",
+            "agent",
             "booking",
             "visa_type",
             "status",
+            "embassy_review_status",
+            "internal_notes",
             "is_locked",
             "required_documents",
+            "document_validation_errors",
             "visa_type_details",
             "visa_type_price",
             "visa_type_required_documents",
@@ -119,10 +126,12 @@ class VisaApplicationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "user",
+            "agent",
             "booking",
             "status",
             "is_locked",
             "required_documents",
+            "document_validation_errors",
             "visa_type_details",
             "visa_type_price",
             "visa_type_required_documents",
@@ -147,6 +156,18 @@ class VisaApplicationSerializer(serializers.ModelSerializer):
         if isinstance(required_docs, (list, tuple)):
             return list(required_docs)
         return []
+
+    def get_document_validation_errors(self, obj):
+        _, errors = validate_application(obj)
+        return errors or {}
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not getattr(user, "user_type", None) == "admin":
+            data.pop("internal_notes", None)
+        return data
 
     def get_visa_type_details(self, obj):
         if not obj.visa_type:
@@ -183,6 +204,13 @@ class VisaDocumentSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["application", "is_verified", "created_at"]
+
+    def validate_file(self, value):
+        if value is None:
+            raise serializers.ValidationError("A document file is required.")
+        if getattr(value, "size", 0) <= 0:
+            raise serializers.ValidationError("Uploaded document is empty.")
+        return value
 
     def validate_document_type(self, value):
         application = self.context.get("application")

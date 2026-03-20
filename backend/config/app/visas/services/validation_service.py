@@ -22,15 +22,22 @@ def validate_application(application):
     documents = application.documents.all()
 
     if required_docs:
-        missing = [
-            doc_type
-            for doc_type in required_docs
-            if not documents.filter(document_type=doc_type).exists()
-        ]
+        missing = []
+        for doc_type in required_docs:
+            document_qs = list(documents.filter(document_type=doc_type))
+            if not document_qs:
+                missing.append(doc_type)
+                continue
+            if not any(getattr(doc.file, "size", 0) for doc in document_qs if doc.file):
+                missing.append(doc_type)
         if missing:
             errors["documents"] = f"Missing documents: {', '.join(missing)}"
     else:
-        if not documents.exists():
+        if not any(getattr(doc.file, "size", 0) for doc in documents if doc.file):
             errors["documents"] = "At least one document is required"
+
+    quality_errors = application.document_quality_errors(required_docs)
+    if quality_errors:
+        errors["document_quality"] = quality_errors
 
     return (len(errors) == 0), errors

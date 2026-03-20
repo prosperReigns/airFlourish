@@ -33,31 +33,37 @@ class VisaType(models.Model):
 class VisaApplication(models.Model):
     STATUS_DRAFT = "draft"
     STATUS_INCOMPLETE = "incomplete"
+    STATUS_READY_FOR_SUBMISSION = "ready_for_submission"
     STATUS_READY_FOR_PAYMENT = "ready_for_payment"
     STATUS_PAID = "paid"
     STATUS_SUBMITTED = "submitted"
     STATUS_UNDER_REVIEW = "under_review"
+    STATUS_UNDER_EMBASSY_REVIEW = "under_embassy_review"
     STATUS_APPROVED = "approved"
     STATUS_REJECTED = "rejected"
 
     STATUS_CHOICES = (
         (STATUS_DRAFT, "Draft"),
         (STATUS_INCOMPLETE, "Incomplete"),
+        (STATUS_READY_FOR_SUBMISSION, "Ready for submission"),
         (STATUS_READY_FOR_PAYMENT, "Ready for payment"),
         (STATUS_PAID, "Paid"),
         (STATUS_SUBMITTED, "Submitted"),
         (STATUS_UNDER_REVIEW, "Under review"),
+        (STATUS_UNDER_EMBASSY_REVIEW, "Under embassy review"),
         (STATUS_APPROVED, "Approved"),
         (STATUS_REJECTED, "Rejected"),
     )
 
     ALLOWED_TRANSITIONS = {
-        STATUS_DRAFT: {STATUS_INCOMPLETE, STATUS_READY_FOR_PAYMENT},
-        STATUS_INCOMPLETE: {STATUS_READY_FOR_PAYMENT},
+        STATUS_DRAFT: {STATUS_INCOMPLETE, STATUS_READY_FOR_SUBMISSION, STATUS_READY_FOR_PAYMENT},
+        STATUS_INCOMPLETE: {STATUS_READY_FOR_SUBMISSION, STATUS_READY_FOR_PAYMENT},
+        STATUS_READY_FOR_SUBMISSION: {STATUS_SUBMITTED},
         STATUS_READY_FOR_PAYMENT: {STATUS_PAID},
         STATUS_PAID: {STATUS_SUBMITTED},
-        STATUS_SUBMITTED: {STATUS_UNDER_REVIEW},
+        STATUS_SUBMITTED: {STATUS_UNDER_EMBASSY_REVIEW, STATUS_UNDER_REVIEW},
         STATUS_UNDER_REVIEW: {STATUS_APPROVED, STATUS_REJECTED},
+        STATUS_UNDER_EMBASSY_REVIEW: {STATUS_APPROVED, STATUS_REJECTED},
         STATUS_APPROVED: set(),
         STATUS_REJECTED: set(),
     }
@@ -66,6 +72,13 @@ class VisaApplication(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="visa_applications",
+    )
+    agent = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="agent_visa_applications",
     )
     booking = models.OneToOneField(
         Booking,
@@ -86,6 +99,8 @@ class VisaApplication(models.Model):
         choices=STATUS_CHOICES,
         default=STATUS_DRAFT,
     )
+    embassy_review_status = models.CharField(max_length=50, blank=True, default="pending")
+    internal_notes = models.TextField(blank=True)
     is_locked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -103,6 +118,19 @@ class VisaApplication(models.Model):
         if not self.is_locked:
             self.is_locked = True
             self.save(update_fields=["is_locked", "updated_at"])
+
+    def document_quality_errors(self, required_docs):
+        errors = {}
+        if not required_docs:
+            return errors
+        documents = list(self.documents.all())
+        for doc_type in required_docs:
+            candidates = [doc for doc in documents if doc.document_type == doc_type]
+            if not candidates:
+                continue
+            if not any(getattr(doc.file, "size", 0) for doc in candidates if doc.file):
+                errors[doc_type] = "Uploaded document is empty or invalid"
+        return errors
 
     def __str__(self):
         visa_type = self.visa_type.name if self.visa_type else "unknown"

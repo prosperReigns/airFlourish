@@ -16,4 +16,9 @@ urlpatterns = [
     path("", include(router.urls)),
     path("visa-types/", VisaTypeView.as_view(), name="visa-types"),
     path("payments/verify/", VisaPaymentVerificationView.as_view(), name="visa-payment-verify"),
+    path(
+        "webhook/payment_verified/",
+        VisaPaymentVerificationView.as_view(),
+        name="visa-payment-verified-webhook",
+    ),
 ]

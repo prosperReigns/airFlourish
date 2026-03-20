@@ -50,6 +50,8 @@ def _confirm_visa_booking(booking):
     visa = VisaApplication.objects.filter(booking=booking).first()
     if not visa:
         return
+    if visa.status == VisaApplication.STATUS_READY_FOR_SUBMISSION:
+        return
     if visa.status == VisaApplication.STATUS_PAID:
         return
     if visa.status != VisaApplication.STATUS_READY_FOR_PAYMENT:
