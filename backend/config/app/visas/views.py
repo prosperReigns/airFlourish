@@ -212,7 +212,10 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
         ok, error = self._ensure_editable(application)
         if not ok:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
-        if application.status not in {VisaApplication.STATUS_DRAFT, VisaApplication.STATUS_INCOMPLETE}:
+        if application.status not in {
+            VisaApplication.STATUS_DRAFT,
+            VisaApplication.STATUS_INCOMPLETE,
+        }:
             return Response(
                 {"error": "Validation is only allowed in draft or incomplete status"},
                 status=status.HTTP_400_BAD_REQUEST,
