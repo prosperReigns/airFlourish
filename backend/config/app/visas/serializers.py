@@ -158,8 +158,12 @@ class VisaApplicationSerializer(serializers.ModelSerializer):
         return []
 
     def get_document_validation_errors(self, obj):
+        cached_errors = getattr(obj, "_document_validation_errors", None)
+        if cached_errors is not None:
+            return cached_errors
         _, errors = validate_application(obj)
-        return errors or {}
+        obj._document_validation_errors = errors or {}
+        return obj._document_validation_errors
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

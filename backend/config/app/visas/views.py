@@ -238,6 +238,12 @@ class VisaApplicationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if not application.user or not application.user.email:
+            return Response(
+                {"error": "Application user is required for payment"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         if allowed_statuses is None:
             allowed_statuses = {VisaApplication.STATUS_READY_FOR_SUBMISSION}
         if application.status not in allowed_statuses:
