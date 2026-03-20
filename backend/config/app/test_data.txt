@@ -317,7 +317,7 @@ PUT /api/visas/applications/{id}/
 }
 PATCH /api/visas/applications/{id}/
 {
-  "visa_type": "tourist"
+  "internal_notes": "Checklist complete, waiting for documents"
 }
 POST /api/visas/applications/{id}/documents/
 Content-Type: multipart/form-data
