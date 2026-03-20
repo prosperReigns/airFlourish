@@ -63,6 +63,12 @@ class BaseFlightTestCase(TestCase):
             currency="NGN",
         )
 
+    def _data(self, response):
+        data = self._data(response)
+        if hasattr(data, "get"):
+            return data.get("results", data)
+        return data
+
     def create_flight_booking(self, user=None, **overrides):
         booking = self.create_booking(user=user or self.user)
         data = {
@@ -191,14 +197,14 @@ class FlightBookingListRetrieveTests(BaseFlightTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(FLIGHT_BOOKINGS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], self.user_flight.id)
+        self.assertEqual(len(self._data(response)), 1)
+        self.assertEqual(self._data(response)[0]["id"], self.user_flight.id)
 
     def test_admin_user_sees_all_flights(self):
         self.client.force_authenticate(self.admin)
         response = self.client.get(FLIGHT_BOOKINGS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(self._data(response)), 2)
 
     def test_user_cannot_retrieve_other_flight(self):
         self.client.force_authenticate(self.user)
@@ -264,7 +270,7 @@ class FlightBookingCreateTests(BaseFlightTestCase):
         }
         response = self.client.post(FLIGHT_BOOKINGS_URL, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        flight = FlightBooking.objects.get(id=response.data["id"])
+        flight = FlightBooking.objects.get(id=self._data(response)["id"])
         self.assertEqual(flight.passengers, 1)
 
     @patch("app.flights.views.BookingEngine.book_flight")
@@ -417,9 +423,9 @@ class SecureFlightBookingTests(BaseFlightTestCase):
         }
         response = self.client.post(SECURE_BOOK_URL, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("payment_link", response.data)
-        self.assertIn("tx_ref", response.data)
-        self.assertIn("booking_id", response.data)
+        self.assertIn("payment_link", self._data(response))
+        self.assertIn("tx_ref", self._data(response))
+        self.assertIn("booking_id", self._data(response))
 
     @patch("app.flights.views.FlutterwaveService")
     @patch("app.flights.views.AmadeusService.reprice_flight")
@@ -442,7 +448,7 @@ class SecureFlightBookingTests(BaseFlightTestCase):
         }
         response = self.client.post(SECURE_BOOK_URL, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        payment = Payment.objects.get(tx_ref=response.data["tx_ref"])
+        payment = Payment.objects.get(tx_ref=self._data(response)["tx_ref"])
         meta = payment.raw_response.get("meta", {})
         self.assertEqual(meta.get("flight_offer"), {"id": "offer-3"})
         self.assertEqual(meta.get("travelers"), [{"id": "t1"}])
@@ -473,7 +479,7 @@ class VerifyFlightPaymentTests(BaseFlightTestCase):
             VERIFY_PAYMENT_URL, data={"tx_ref": payment.tx_ref}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["message"], "Already verified")
+        self.assertEqual(self._data(response)["message"], "Already verified")
         mock_verify.assert_not_called()
 
     @patch("app.flights.views.FlutterwaveService.verify_payment")
@@ -621,7 +627,7 @@ class FlightSearchTests(BaseFlightTestCase):
             },
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [{"id": "flight-1"}])
+        self.assertEqual(self._data(response), [{"id": "flight-1"}])
         mock_search.assert_called_once_with("JFK", "LAX", "2026-05-01", "2026-05-10")
 
 
@@ -1372,7 +1378,7 @@ class FullFlightBookingFlowTest(APITestCase):
 
         self.assertEqual(search_response.status_code, status.HTTP_200_OK)
 
-        offer = search_response.data[0]
+        offer = search_self._data(response)[0]
 
         # -------------------------
         # 2️⃣ Create booking

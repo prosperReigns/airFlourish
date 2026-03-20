@@ -14,3 +14,13 @@ class PaymentThrottle(UserRateThrottle):
 class BookingThrottle(UserRateThrottle):
 
     scope = "booking"
+
+
+class HotelSearchThrottle(UserRateThrottle):
+
+    scope = "hotel_search"
+
+
+class FlightSearchThrottle(UserRateThrottle):
+
+    scope = "flight_search"

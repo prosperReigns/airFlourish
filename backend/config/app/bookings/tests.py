@@ -55,6 +55,12 @@ class BaseBookingTestCase(TestCase):
             currency="NGN",
         )
 
+    def _data(self, response):
+        data = self._data(response)
+        if hasattr(data, "get"):
+            return data.get("results", data)
+        return data
+
 
 class BookingModelTests(BaseBookingTestCase):
     def test_booking_str_and_defaults(self):
@@ -245,15 +251,15 @@ class BookingViewSetListRetrieveTests(BaseBookingTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(BOOKINGS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["user"], self.user.id)
+        self.assertEqual(len(self._data(response)), 1)
+        self.assertEqual(self._data(response)[0]["user"], self.user.id)
 
     def test_admin_user_sees_all_bookings(self):
         self.client.force_authenticate(self.admin)
         response = self.client.get(BOOKINGS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
-        user_ids = {booking["user"] for booking in response.data}
+        self.assertEqual(len(self._data(response)), 2)
+        user_ids = {booking["user"] for booking in self._data(response)}
         self.assertIn(self.user.id, user_ids)
         self.assertIn(self.other_user.id, user_ids)
 
@@ -261,7 +267,7 @@ class BookingViewSetListRetrieveTests(BaseBookingTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(f"{BOOKINGS_URL}{self.user_booking.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["user"], self.user.id)
+        self.assertEqual(self._data(response)["user"], self.user.id)
 
     def test_regular_user_cannot_retrieve_other_booking(self):
         self.client.force_authenticate(self.user)
@@ -272,17 +278,17 @@ class BookingViewSetListRetrieveTests(BaseBookingTestCase):
         self.client.force_authenticate(self.admin)
         response = self.client.get(f"{BOOKINGS_URL}{self.other_booking.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["user"], self.other_user.id)
+        self.assertEqual(self._data(response)["user"], self.other_user.id)
 
     def test_list_returns_expected_count_for_user(self):
         self.client.force_authenticate(self.user)
         response = self.client.get(BOOKINGS_URL)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(self._data(response)), 1)
 
     def test_list_returns_expected_count_for_admin(self):
         self.client.force_authenticate(self.admin)
         response = self.client.get(BOOKINGS_URL)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(self._data(response)), 2)
 
 
 class BookingViewSetCreateTests(BaseBookingTestCase):
@@ -302,7 +308,7 @@ class BookingViewSetCreateTests(BaseBookingTestCase):
             data={"service_type": "hotel", "total_price": "150.00"},
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(response.data["reference_code"])
+        self.assertTrue(self._data(response)["reference_code"])
 
     def test_create_ignores_user_field_in_payload(self):
         self.client.force_authenticate(self.user)
@@ -315,7 +321,7 @@ class BookingViewSetCreateTests(BaseBookingTestCase):
             },
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        booking = Booking.objects.get(id=response.data["id"])
+        booking = Booking.objects.get(id=self._data(response)["id"])
         self.assertEqual(booking.user_id, self.user.id)
 
     def test_create_defaults_status_pending(self):
@@ -325,7 +331,7 @@ class BookingViewSetCreateTests(BaseBookingTestCase):
             data={"service_type": "hotel", "total_price": "150.00"},
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["status"], "pending")
+        self.assertEqual(self._data(response)["status"], "pending")
 
     def test_create_rejects_invalid_service_type(self):
         self.client.force_authenticate(self.user)
@@ -334,7 +340,7 @@ class BookingViewSetCreateTests(BaseBookingTestCase):
             data={"service_type": "invalid", "total_price": "150.00"},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("service_type", response.data)
+        self.assertIn("service_type", self._data(response))
 
     def test_create_rejects_invalid_status(self):
         self.client.force_authenticate(self.user)
@@ -343,7 +349,7 @@ class BookingViewSetCreateTests(BaseBookingTestCase):
             data={"service_type": "hotel", "status": "not-valid"},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("status", response.data)
+        self.assertIn("status", self._data(response))
 
     def test_create_allows_null_total_price(self):
         self.client.force_authenticate(self.user)
@@ -353,7 +359,7 @@ class BookingViewSetCreateTests(BaseBookingTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        booking = Booking.objects.get(id=response.data["id"])
+        booking = Booking.objects.get(id=self._data(response)["id"])
         self.assertIsNone(booking.total_price)
 
     def test_create_rejects_missing_service_type(self):
@@ -363,7 +369,7 @@ class BookingViewSetCreateTests(BaseBookingTestCase):
             data={"total_price": "150.00"},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("service_type", response.data)
+        self.assertIn("service_type", self._data(response))
 
     def test_create_returns_created_at(self):
         self.client.force_authenticate(self.user)
@@ -372,7 +378,7 @@ class BookingViewSetCreateTests(BaseBookingTestCase):
             data={"service_type": "hotel", "total_price": "150.00"},
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn("created_at", response.data)
+        self.assertIn("created_at", self._data(response))
 
     def test_create_returns_201(self):
         self.client.force_authenticate(self.user)
@@ -425,7 +431,7 @@ class BookingViewSetUpdateTests(BaseBookingTestCase):
             data={"status": "confirmed"},
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertEqual(response.data["detail"], "Only admin can update booking status.")
+        self.assertEqual(self._data(response)["detail"], "Only admin can update booking status.")
 
 
 class BookingThrottleTests(BaseBookingTestCase):
@@ -589,7 +595,7 @@ class FlightSearchViewTests(BaseBookingTestCase):
             },
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [{"id": "flight-1"}, {"id": "flight-2"}])
+        self.assertEqual(self._data(response), [{"id": "flight-1"}, {"id": "flight-2"}])
 
 
 class BookingEngineTests(BaseBookingTestCase):
@@ -648,7 +654,7 @@ class BookingExtraTests(BaseBookingTestCase):
             BOOKINGS_URL, {"service_type": "hotel", "total_price": "0.00"}
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        booking = Booking.objects.get(id=response.data["id"])
+        booking = Booking.objects.get(id=self._data(response)["id"])
         self.assertEqual(booking.total_price, Decimal("0.00"))
 
     def test_create_booking_with_large_price(self):
@@ -657,14 +663,14 @@ class BookingExtraTests(BaseBookingTestCase):
             BOOKINGS_URL, {"service_type": "flight", "total_price": "100000000.00"}
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        booking = Booking.objects.get(id=response.data["id"])
+        booking = Booking.objects.get(id=self._data(response)["id"])
         self.assertEqual(booking.total_price, Decimal("100000000.00"))
 
     def test_create_booking_missing_total_price_defaults_to_none(self):
         self.client.force_authenticate(self.user)
         response = self.client.post(BOOKINGS_URL, {"service_type": "hotel"})
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        booking = Booking.objects.get(id=response.data["id"])
+        booking = Booking.objects.get(id=self._data(response)["id"])
         self.assertIsNone(booking.total_price)
 
     def test_create_booking_with_invalid_currency(self):
@@ -673,7 +679,7 @@ class BookingExtraTests(BaseBookingTestCase):
             BOOKINGS_URL, {"service_type": "hotel", "total_price": "150.00", "currency": "XXX"}
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("currency", response.data)
+        self.assertIn("currency", self._data(response))
 
     def test_create_booking_with_extra_fields_ignored(self):
         self.client.force_authenticate(self.user)
@@ -682,7 +688,7 @@ class BookingExtraTests(BaseBookingTestCase):
             {"service_type": "hotel", "total_price": "150.00", "unknown_field": "abc"},
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertFalse(hasattr(Booking.objects.get(id=response.data["id"]), "unknown_field"))
+        self.assertFalse(hasattr(Booking.objects.get(id=self._data(response)["id"]), "unknown_field"))
 
     # -------------------------
     # Booking Update / Patch
@@ -745,7 +751,7 @@ class BookingExtraTests(BaseBookingTestCase):
         Booking.objects.all().delete()
         response = self.client.get(BOOKINGS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 0)
+        self.assertEqual(len(self._data(response)), 0)
 
     def test_filter_bookings_by_service_type(self):
         self.create_booking(service_type="hotel")
@@ -753,7 +759,7 @@ class BookingExtraTests(BaseBookingTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(f"{BOOKINGS_URL}?service_type=flight")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(all(b["service_type"] == "flight" for b in response.data))
+        self.assertTrue(all(b["service_type"] == "flight" for b in self._data(response)))
 
     def test_filter_bookings_by_status(self):
         self.create_booking()
@@ -763,7 +769,7 @@ class BookingExtraTests(BaseBookingTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(f"{BOOKINGS_URL}?status=confirmed")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(all(b["status"] == "confirmed" for b in response.data))
+        self.assertTrue(all(b["status"] == "confirmed" for b in self._data(response)))
 
     def test_list_bookings_ordered_by_created_at(self):
         b1 = self.create_booking()
@@ -771,7 +777,7 @@ class BookingExtraTests(BaseBookingTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(f"{BOOKINGS_URL}?ordering=-created_at")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreater(response.data[0]["id"], response.data[1]["id"])
+        self.assertGreater(self._data(response)[0]["id"], self._data(response)[1]["id"])
 
     def test_list_bookings_ordered_by_total_price(self):
         self.create_booking(total_price=Decimal("100.00"))
@@ -779,7 +785,7 @@ class BookingExtraTests(BaseBookingTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(f"{BOOKINGS_URL}?ordering=total_price")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        prices = [Decimal(b["total_price"]) for b in response.data]
+        prices = [Decimal(b["total_price"]) for b in self._data(response)]
         self.assertEqual(prices, sorted(prices))
 
     # -------------------------
@@ -794,7 +800,7 @@ class BookingExtraTests(BaseBookingTestCase):
             data={"origin": "JFK", "destination": "LAX", "departure_date": "2026-05-01"},
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, [])
+        self.assertEqual(self._data(response), [])
 
     @patch("app.bookings.views.AmadeusService.search_flights")
     def test_flight_search_invalid_dates(self, mock_search):
@@ -970,7 +976,7 @@ class BookingWorkflowTests(BaseBookingTestCase):
             FLIGHT_SEARCH_URL,
             data={"origin": "JFK", "destination": "LAX", "departure_date": "2026-05-01"},
         )
-        flight_data = response.data[0]
+        flight_data = self._data(response)[0]
         booking = BookingEngine.create_booking(user=self.user, service_type="flight", total_price=Decimal("500.00"))
         self.assertEqual(booking.service_type, "flight")
         self.assertEqual(booking.user, self.user)
@@ -983,7 +989,7 @@ class BookingWorkflowTests(BaseBookingTestCase):
             FLIGHT_SEARCH_URL,
             data={"origin": "LHR", "destination": "CDG", "departure_date": "2026-06-01"},
         )
-        flight_data = response.data[0]
+        flight_data = self._data(response)[0]
         booking = BookingEngine.create_booking(user=self.user, service_type="flight", total_price=Decimal(flight_data["price"]))
         self.assertEqual(booking.total_price, Decimal("300"))
 
@@ -1119,7 +1125,7 @@ class BookingWorkflowTests(BaseBookingTestCase):
         self.create_booking(user=self.other_user)
         self.client.force_authenticate(self.admin)
         response = self.client.get(BOOKINGS_URL)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(self._data(response)), 2)
 
     # -------------------------
     # Booking + Flight + Visa + Payment Combined

@@ -120,6 +120,9 @@ REST_FRAMEWORK = {
         "anon": "20/minute",
         "user": "100/minute",
         "ip": "30/minute",
+        "login": "5/minute",
+        "payment": "30/minute",
+        "booking": "20/minute",
         "hotel_search": "10/minute",
         "flight_search": "10/minute",
     }
@@ -179,20 +182,6 @@ COUNTRY_CURRENCY_MAP = {
 }
 # Flutterwave bank transfer support is currency-limited (e.g., NGN/GHS).
 BANK_TRANSFER_SUPPORTED_CURRENCIES = ["NGN", "GHS"]
-
-# Visa settings
-VISA_TYPES_DEFAULT = ["Tourist", "Business"]
-VISA_TYPES_BY_COUNTRY = {
-    "NG": ["Tourist", "Business", "Student", "Work"],
-}
-REQUIRED_VISA_DOCUMENT_TYPES = ["passport"]
-VISA_DEFAULT_PROCESSING_DAYS = 7
-VISA_TYPE_REQUIRED_DOCUMENTS = {
-    "tourist": ["passport", "photo", "travel_itinerary", "bank_statement"],
-    "business": ["passport", "invitation_letter", "company_letter", "bank_statement"],
-    "student": ["passport", "acceptance_letter", "transcript", "financial_proof"],
-    "work": ["passport", "employment_letter", "cv", "qualification_certificates"],
-}
 
 # Cache settings (flight search/payment context)
 FLIGHT_OFFER_CACHE_TTL = 60 * 60  # 1 hour

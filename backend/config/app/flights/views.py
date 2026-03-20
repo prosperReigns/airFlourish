@@ -27,6 +27,7 @@ from app.services.flight_transformer import simplify_flight_offers
 from app.services.amadeus_transformer import _extract_flight_details
 from app.services.helper_function import _convert_amount, _get_user_currency,_quantize_amount,_to_decimal
 from app.core.pagination import DefaultPagination
+from app.security.throttles import FlightSearchThrottle
 
 @method_decorator(
     name="list",
@@ -387,6 +388,7 @@ class SecureFlightBookingView(APIView):
 
 class FlightSearchView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [FlightSearchThrottle]
 
     @swagger_auto_schema(
         operation_description="Search flights via Amadeus. Endpoint: /api/flights/search-flights/",

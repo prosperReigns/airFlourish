@@ -1,86 +1,112 @@
 from rest_framework import serializers
-from .models import TransportService, TransportReservation
+from .models import Trip, Vehicle, TripAssignment, TransportBooking
 
-class TransportServiceSerializer(serializers.ModelSerializer):
-    """Serializer for transport services. This serializer is used for creating and managing transport services related to bookings. It includes all fields of the TransportService model and can be used for both creating new transport services and updating existing ones.
-    Expected request data for creating/updating a transport service:
-    {
-        "booking": 1,
-        "transport_type": "car",
-        "pickup_location": "123 Main St, City",
-        "dropoff_location": "456 Elm St, City",
-        "pickup_time": "2023-10-01T10:00:00Z",
-        "dropoff_time": "2023-10-01T12:00:00Z",
-        "company": "Transport Co",
-        "price": 50.00,
-        "currency": "USD"
-    }
-    """
+
+class TripSerializer(serializers.ModelSerializer):
+    available_seats = serializers.SerializerMethodField()
+
     class Meta:
-        model = TransportService
+        model = Trip
         fields = [
             "id",
-            "vehicle_type",
-            "transport_name",
+            "name",
+            "organization",
             "pickup_location",
             "dropoff_location",
-            "price_per_passenger",
+            "departure_time",
+            "arrival_time",
+            "flight_number",
+            "airline",
+            "expected_arrival_time",
+            "capacity",
+            "booked_seats",
+            "available_seats",
+            "is_shared",
+            "price_per_seat",
             "currency",
+            "status",
             "created_at",
-            "booking",
-            "passengers",
-            "special_requests",
+            "updated_at",
         ]
-class TransportSerializer(serializers.ModelSerializer):
-    """""Serializer for transport reservations. This serializer is used for creating and managing transport reservations related to bookings. It includes all fields of the TransportReservation model and can be used for both creating new transport reservations and updating existing ones.
-    Expected request data for creating/updating a transport reservation:
-    {
-        "service": 1,
-        "booking": 1,
-        "reserved_by": 1,
-        "passengers_count": 2,
-        "special_requests": "Need wheelchair access."
-    }
-    """
+
+    def get_available_seats(self, obj):
+        return obj.capacity - obj.booked_seats
+
+    def validate_capacity(self, value):
+        if value < 1:
+            raise serializers.ValidationError("Capacity must be at least 1")
+        return value
+
+
+class VehicleSerializer(serializers.ModelSerializer):
     class Meta:
-        model = TransportService
+        model = Vehicle
         fields = [
             "id",
             "vehicle_type",
-            "transport_name",
-            "pickup_location",
-            "dropoff_location",
-            "price_per_passenger",
-            "currency",
-            "passengers",
-            "special_requests",
+            "plate_number",
+            "capacity",
+            "provider",
+            "status",
+            "is_active",
         ]
 
 
-class TransportReservationSerializer(serializers.ModelSerializer):
-    """Serializer for transport reservations. This serializer is used for creating and managing transport reservations related to bookings. It includes all fields of the TransportReservation model and can be used for both creating new transport reservations and updating existing ones.
-    Expected request data for creating/updating a transport reservation:
-    {
-        "service": 1,
-        "booking": 1,
-        "reserved_by": 1,
-        "passengers_count": 2,
-        "special_requests": "Need wheelchair access."
-    }
-    """
-    service_detail = TransportServiceSerializer(source="service", read_only=True)
+class TripAssignmentSerializer(serializers.ModelSerializer):
+    trip_detail = TripSerializer(source="trip", read_only=True)
+    vehicle_detail = VehicleSerializer(source="vehicle", read_only=True)
 
     class Meta:
-        model = TransportReservation
+        model = TripAssignment
         fields = [
             "id",
-            "service",
-            "service_detail",
-            "booking",
-            "reserved_by",
-            "passengers_count",
-            "special_requests",
-            "reserved_at",
+            "trip",
+            "trip_detail",
+            "vehicle",
+            "vehicle_detail",
+            "driver",
+            "assigned_at",
+            "updated_at",
             "status",
         ]
-        read_only_fields = ["reserved_at", "reserved_by"]
+
+
+class TransportBookingSerializer(serializers.ModelSerializer):
+    trip_detail = TripSerializer(source="trip", read_only=True)
+
+    class Meta:
+        model = TransportBooking
+        fields = [
+            "id",
+            "trip",
+            "trip_detail",
+            "user",
+            "passengers",
+            "organization",
+            "status",
+            "reference",
+            "expires_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "user",
+            "status",
+            "reference",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_passengers(self, value):
+        if value < 1:
+            raise serializers.ValidationError("Passengers must be at least 1")
+        return value
+
+    def validate(self, attrs):
+        trip = attrs.get("trip")
+        passengers = attrs.get("passengers", 1)
+
+        if trip and not trip.has_capacity(passengers):
+            raise serializers.ValidationError("Not enough available seats")
+
+        return attrs

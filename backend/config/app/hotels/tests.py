@@ -63,6 +63,12 @@ class BaseHotelTestCase(TestCase):
     def auth(self, user):
         self.client.force_authenticate(user)
 
+    def _data(self, response):
+        data = self._data(response)
+        if hasattr(data, "get"):
+            return data.get("results", data)
+        return data
+
 
 class HotelFlowTests(BaseHotelTestCase):
     def setUp(self):
@@ -74,8 +80,8 @@ class HotelFlowTests(BaseHotelTestCase):
     def test_user_can_list_hotels(self):
         response = self.client.get("/api/hotels/hotels/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["hotel_name"], "Test Hotel")
+        self.assertEqual(len(self._data(response)), 1)
+        self.assertEqual(self._data(response)[0]["hotel_name"], "Test Hotel")
 
     def test_user_can_book_hotel(self):
         payload = {
@@ -86,7 +92,7 @@ class HotelFlowTests(BaseHotelTestCase):
         }
 
         response = self.client.post(
-            "/api/hotels/hotel-reservations/",
+            "/api/hotels/reservation/",
             payload,
             format="json",
         )
@@ -264,7 +270,7 @@ class HotelAPISecurityTests(BaseHotelTestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_reservations_requires_auth(self):
-        response = self.client.get("/api/hotels/hotel-reservations/")
+        response = self.client.get("/api/hotels/reservation/")
         self.assertEqual(response.status_code, 401)
 
 
@@ -279,19 +285,19 @@ class HotelListAPITests(BaseHotelTestCase):
         self.create_hotel(hotel_name="Hotel B")
         response = self.client.get("/api/hotels/hotels/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(self._data(response)), 2)
 
     def test_list_returns_empty_when_none(self):
         response = self.client.get("/api/hotels/hotels/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 0)
+        self.assertEqual(len(self._data(response)), 0)
 
     def test_retrieve_returns_expected_fields(self):
         hotel = self.create_hotel(hotel_name="Field Hotel", city="Abuja")
         response = self.client.get(f"/api/hotels/hotels/{hotel.id}/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["hotel_name"], "Field Hotel")
-        self.assertEqual(response.data["city"], "Abuja")
+        self.assertEqual(self._data(response)["hotel_name"], "Field Hotel")
+        self.assertEqual(self._data(response)["city"], "Abuja")
 
     def test_retrieve_returns_404_for_missing(self):
         response = self.client.get("/api/hotels/hotels/99999/")
@@ -316,50 +322,50 @@ class HotelReservationCreateValidationTests(BaseHotelTestCase):
     def test_create_missing_hotel_id(self):
         payload = self._payload()
         payload.pop("hotel_id")
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_create_missing_check_in(self):
         payload = self._payload()
         payload.pop("check_in")
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_create_missing_check_out(self):
         payload = self._payload()
         payload.pop("check_out")
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_create_invalid_guests(self):
         payload = self._payload()
         payload["guests"] = 0
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_create_hotel_not_found(self):
         payload = self._payload()
         payload["hotel_id"] = 99999
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 404)
 
     def test_create_invalid_date_format(self):
         payload = self._payload()
         payload["check_in"] = "not-a-date"
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_create_check_out_before_check_in(self):
         payload = self._payload()
         payload["check_out"] = "2026-04-09"
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_create_hotel_price_missing(self):
         self.hotel.price_per_night = None
         self.hotel.save()
         payload = self._payload()
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
 
@@ -406,26 +412,26 @@ class HotelReservationAccessTests(BaseHotelTestCase):
 
     def test_user_sees_only_own_reservations(self):
         self.auth(self.user)
-        response = self.client.get("/api/hotels/hotel-reservations/")
+        response = self.client.get("/api/hotels/reservation/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], self.user_reservation.id)
+        self.assertEqual(len(self._data(response)), 1)
+        self.assertEqual(self._data(response)[0]["id"], self.user_reservation.id)
 
     def test_admin_sees_all_reservations(self):
         self.auth(self.admin)
-        response = self.client.get("/api/hotels/hotel-reservations/")
+        response = self.client.get("/api/hotels/reservation/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(self._data(response)), 2)
 
     def test_user_cannot_retrieve_other_reservation(self):
         self.auth(self.user)
-        response = self.client.get(f"/api/hotels/hotel-reservations/{self.other_reservation.id}/")
+        response = self.client.get(f"/api/hotels/reservation/{self.other_reservation.id}/")
         self.assertEqual(response.status_code, 404)
 
     def test_user_can_update_own_reservation(self):
         self.auth(self.user)
         response = self.client.patch(
-            f"/api/hotels/hotel-reservations/{self.user_reservation.id}/",
+            f"/api/hotels/reservation/{self.user_reservation.id}/",
             {"guests": 3},
             format="json",
         )
@@ -435,12 +441,12 @@ class HotelReservationAccessTests(BaseHotelTestCase):
 
     def test_user_cannot_delete_other_reservation(self):
         self.auth(self.user)
-        response = self.client.delete(f"/api/hotels/hotel-reservations/{self.other_reservation.id}/")
+        response = self.client.delete(f"/api/hotels/reservation/{self.other_reservation.id}/")
         self.assertEqual(response.status_code, 404)
 
     def test_user_can_delete_own_reservation(self):
         self.auth(self.user)
-        response = self.client.delete(f"/api/hotels/hotel-reservations/{self.user_reservation.id}/")
+        response = self.client.delete(f"/api/hotels/reservation/{self.user_reservation.id}/")
         self.assertEqual(response.status_code, 204)
         self.assertFalse(HotelReservation.objects.filter(id=self.user_reservation.id).exists())
 
@@ -459,7 +465,7 @@ class HotelReservationBehaviorTests(BaseHotelTestCase):
             "check_out": "2026-04-12",
             "guests": 2,
         }
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
         booking = Booking.objects.first()
         self.assertEqual(booking.service_type, "hotel")
 
@@ -472,7 +478,7 @@ class HotelReservationBehaviorTests(BaseHotelTestCase):
             "check_out": "2026-04-12",
             "guests": 2,
         }
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
         booking = Booking.objects.first()
         self.assertEqual(booking.currency, "NGN")
 
@@ -483,7 +489,7 @@ class HotelReservationBehaviorTests(BaseHotelTestCase):
             "check_out": "2026-04-13",
             "guests": 2,
         }
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
         reservation = HotelReservation.objects.first()
         self.assertEqual(reservation.total_price, Decimal("450.00"))
 
@@ -494,7 +500,7 @@ class HotelReservationBehaviorTests(BaseHotelTestCase):
             "check_out": "2026-04-12",
             "guests": "3",
         }
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
         reservation = HotelReservation.objects.first()
         self.assertEqual(reservation.guests, 3)
 
@@ -679,7 +685,7 @@ class HotelPerformanceTests(BaseHotelTestCase):
             guests=1,
         )
         with self.assertNumQueries(3):
-            self.client.get("/api/hotels/hotel-reservations/")
+            self.client.get("/api/hotels/reservation/")
 
 
 @override_settings(
@@ -710,8 +716,8 @@ class HotelRateLimitingTests(BaseHotelTestCase):
             "check_out": "2026-04-12",
             "guests": 1,
         }
-        first = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
-        second = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        first = self.client.post("/api/hotels/reservation/", payload, format="json")
+        second = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 429)
 
@@ -733,7 +739,7 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     def test_booking_far_future_date(self):
@@ -748,7 +754,7 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             "guests": 2,
         }
 
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 201)
 
     def test_booking_past_date_rejected(self):
@@ -763,7 +769,7 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             "guests": 2,
         }
 
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     # -------------------------
@@ -782,7 +788,7 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
 
         hotel.refresh_from_db()
         self.assertLessEqual(hotel.available_rooms, 5)
@@ -799,7 +805,7 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     # -------------------------
@@ -819,8 +825,8 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             "guests": 2,
         }
 
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
 
         self.assertEqual(response.status_code, 201)
 
@@ -840,7 +846,7 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
 
         booking = Booking.objects.first()
         self.assertTrue(booking.reference_code.startswith("HOT"))
@@ -858,7 +864,7 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
 
         reservation = HotelReservation.objects.first()
         self.assertEqual(reservation.user, reservation.booking.user)
@@ -952,7 +958,7 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             "total_price": "1",
         }
 
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
 
         reservation = HotelReservation.objects.first()
         self.assertNotEqual(reservation.total_price, Decimal("1"))
@@ -974,8 +980,8 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
 
         self.assertIn(response.status_code, [400, 409])
 
@@ -1018,7 +1024,7 @@ class HotelDeepCoverageTests(BaseHotelTestCase):
             )
 
         with self.assertNumQueries(3):
-            self.client.get("/api/hotels/hotel-reservations/")
+            self.client.get("/api/hotels/reservation/")
 
 class HotelBookingProductionTests(BaseHotelTestCase):
 
@@ -1040,10 +1046,10 @@ class HotelBookingProductionTests(BaseHotelTestCase):
         }
 
         self.auth(user1)
-        r1 = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        r1 = self.client.post("/api/hotels/reservation/", payload, format="json")
 
         self.auth(user2)
-        r2 = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        r2 = self.client.post("/api/hotels/reservation/", payload, format="json")
 
         self.assertEqual(r1.status_code, 201)
         self.assertIn(r2.status_code, [400, 409])
@@ -1072,8 +1078,8 @@ class HotelBookingProductionTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        r1 = self.client.post("/api/hotels/hotel-reservations/", payload1, format="json")
-        r2 = self.client.post("/api/hotels/hotel-reservations/", payload2, format="json")
+        r1 = self.client.post("/api/hotels/reservation/", payload1, format="json")
+        r2 = self.client.post("/api/hotels/reservation/", payload2, format="json")
 
         self.assertEqual(r1.status_code, 201)
         self.assertIn(r2.status_code, [400, 409])
@@ -1089,7 +1095,7 @@ class HotelBookingProductionTests(BaseHotelTestCase):
         hotel = self.create_hotel(available_rooms=1)
 
         self.client.post(
-            "/api/hotels/hotel-reservations/",
+            "/api/hotels/reservation/",
             {
                 "hotel_id": hotel.id,
                 "check_in": "2026-10-01",
@@ -1100,7 +1106,7 @@ class HotelBookingProductionTests(BaseHotelTestCase):
         )
 
         response = self.client.post(
-            "/api/hotels/hotel-reservations/",
+            "/api/hotels/reservation/",
             {
                 "hotel_id": hotel.id,
                 "check_in": "2026-10-05",
@@ -1129,7 +1135,7 @@ class HotelBookingProductionTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
 
         reservation = HotelReservation.objects.first()
 
@@ -1166,11 +1172,11 @@ class HotelBookingProductionTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
 
         reservation = HotelReservation.objects.first()
 
-        self.client.delete(f"/api/hotels/hotel-reservations/{reservation.id}/")
+        self.client.delete(f"/api/hotels/reservation/{reservation.id}/")
 
         hotel.refresh_from_db()
 
@@ -1193,7 +1199,7 @@ class HotelBookingProductionTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
 
         reservation = HotelReservation.objects.first()
 
@@ -1219,7 +1225,7 @@ class HotelBookingProductionTests(BaseHotelTestCase):
             "user": other.id,
         }
 
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
 
         reservation = HotelReservation.objects.first()
 
@@ -1242,7 +1248,7 @@ class HotelBookingProductionTests(BaseHotelTestCase):
             "guests": 100,
         }
 
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
 
         self.assertEqual(response.status_code, 400)
 
@@ -1277,7 +1283,7 @@ class HotelBookingProductionTests(BaseHotelTestCase):
             "guests": 1,
         }
 
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
 
         self.assertEqual(response.status_code, 201)
 
@@ -1309,9 +1315,9 @@ class HotelBookingProductionTests(BaseHotelTestCase):
                 guests=1,
             )
 
-        response = self.client.get("/api/hotels/hotel-reservations/")
+        response = self.client.get("/api/hotels/reservation/")
 
-        self.assertEqual(len(response.data), 20)
+        self.assertEqual(len(self._data(response)), 20)
 
 class HotelAvailabilityCalendarTests(BaseHotelTestCase):
 
@@ -1327,7 +1333,7 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
         hotel = self.create_hotel(available_rooms=1)
         # Book one day
         payload = {"hotel_id": hotel.id, "check_in": "2026-06-01", "check_out": "2026-06-02", "guests": 1}
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
         hotel.refresh_from_db()
         self.assertEqual(hotel.available_rooms, 0)
 
@@ -1339,7 +1345,7 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
         # Book 2 rooms for same date
         for _ in range(2):
             payload = {"hotel_id": hotel.id, "check_in": "2026-06-05", "check_out": "2026-06-06", "guests": 1}
-            self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+            self.client.post("/api/hotels/reservation/", payload, format="json")
         hotel.refresh_from_db()
         self.assertEqual(hotel.available_rooms, 1)
 
@@ -1349,10 +1355,10 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
     def test_overlapping_reservations_matrix(self):
         hotel = self.create_hotel(available_rooms=2)
         # Two overlapping reservations
-        self.client.post("/api/hotels/hotel-reservations/", {"hotel_id": hotel.id, "check_in": "2026-07-01", "check_out": "2026-07-04", "guests": 1}, format="json")
-        self.client.post("/api/hotels/hotel-reservations/", {"hotel_id": hotel.id, "check_in": "2026-07-03", "check_out": "2026-07-05", "guests": 1}, format="json")
+        self.client.post("/api/hotels/reservation/", {"hotel_id": hotel.id, "check_in": "2026-07-01", "check_out": "2026-07-04", "guests": 1}, format="json")
+        self.client.post("/api/hotels/reservation/", {"hotel_id": hotel.id, "check_in": "2026-07-03", "check_out": "2026-07-05", "guests": 1}, format="json")
         # Third reservation should fail on fully booked date
-        response = self.client.post("/api/hotels/hotel-reservations/", {"hotel_id": hotel.id, "check_in": "2026-07-02", "check_out": "2026-07-03", "guests": 1}, format="json")
+        response = self.client.post("/api/hotels/reservation/", {"hotel_id": hotel.id, "check_in": "2026-07-02", "check_out": "2026-07-03", "guests": 1}, format="json")
         self.assertIn(response.status_code, [400, 409])
 
     # -------------------------
@@ -1361,9 +1367,9 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
     def test_cancellation_updates_calendar(self):
         hotel = self.create_hotel(available_rooms=1)
         payload = {"hotel_id": hotel.id, "check_in": "2026-08-10", "check_out": "2026-08-12", "guests": 1}
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
         reservation = HotelReservation.objects.first()
-        self.client.delete(f"/api/hotels/hotel-reservations/{reservation.id}/")
+        self.client.delete(f"/api/hotels/reservation/{reservation.id}/")
         hotel.refresh_from_db()
         self.assertEqual(hotel.available_rooms, 1)
 
@@ -1373,7 +1379,7 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
     def test_booking_across_month_boundary(self):
         hotel = self.create_hotel(available_rooms=1)
         payload = {"hotel_id": hotel.id, "check_in": "2026-05-30", "check_out": "2026-06-02", "guests": 1}
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
         reservation = HotelReservation.objects.first()
         self.assertEqual(reservation.total_price, hotel.price_per_night * 3)
 
@@ -1389,7 +1395,7 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
             {"check_in": "2026-09-03", "check_out": "2026-09-05"},
         ]
         for b in bookings:
-            self.client.post("/api/hotels/hotel-reservations/", {"hotel_id": hotel.id, **b, "guests": 1}, format="json")
+            self.client.post("/api/hotels/reservation/", {"hotel_id": hotel.id, **b, "guests": 1}, format="json")
         hotel.refresh_from_db()
         self.assertEqual(hotel.available_rooms, 0)
 
@@ -1399,7 +1405,7 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
     def test_same_checkin_checkout_rejected(self):
         hotel = self.create_hotel()
         payload = {"hotel_id": hotel.id, "check_in": "2026-10-01", "check_out": "2026-10-01", "guests": 1}
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     # -------------------------
@@ -1408,9 +1414,9 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
     def test_bulk_booking_multiple_days_multiple_rooms(self):
         hotel = self.create_hotel(available_rooms=5)
         for i in range(5):
-            self.client.post("/api/hotels/hotel-reservations/", {"hotel_id": hotel.id, "check_in": "2026-11-01", "check_out": "2026-11-03", "guests": 1}, format="json")
+            self.client.post("/api/hotels/reservation/", {"hotel_id": hotel.id, "check_in": "2026-11-01", "check_out": "2026-11-03", "guests": 1}, format="json")
         # Sixth booking should fail
-        response = self.client.post("/api/hotels/hotel-reservations/", {"hotel_id": hotel.id, "check_in": "2026-11-01", "check_out": "2026-11-03", "guests": 1}, format="json")
+        response = self.client.post("/api/hotels/reservation/", {"hotel_id": hotel.id, "check_in": "2026-11-01", "check_out": "2026-11-03", "guests": 1}, format="json")
         self.assertIn(response.status_code, [400, 409])
 
     # -------------------------
@@ -1419,7 +1425,7 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
     def test_booking_far_future_date(self):
         hotel = self.create_hotel()
         payload = {"hotel_id": hotel.id, "check_in": "2030-01-01", "check_out": "2030-01-05", "guests": 1}
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 201)
 
     # -------------------------
@@ -1428,7 +1434,7 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
     def test_booking_past_date_rejected(self):
         hotel = self.create_hotel()
         payload = {"hotel_id": hotel.id, "check_in": "2020-01-01", "check_out": "2020-01-02", "guests": 1}
-        response = self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+        response = self.client.post("/api/hotels/reservation/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
     # -------------------------
@@ -1438,8 +1444,8 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
         hotel1 = self.create_hotel(hotel_name="Hotel 1", available_rooms=1)
         hotel2 = self.create_hotel(hotel_name="Hotel 2", available_rooms=1)
         payload = {"hotel_id": hotel1.id, "check_in": "2026-12-01", "check_out": "2026-12-03", "guests": 1}
-        self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
-        response2 = self.client.post("/api/hotels/hotel-reservations/", {"hotel_id": hotel2.id, "check_in": "2026-12-01", "check_out": "2026-12-03", "guests": 1}, format="json")
+        self.client.post("/api/hotels/reservation/", payload, format="json")
+        response2 = self.client.post("/api/hotels/reservation/", {"hotel_id": hotel2.id, "check_in": "2026-12-01", "check_out": "2026-12-03", "guests": 1}, format="json")
         self.assertEqual(response2.status_code, 201)
 
     # -------------------------
@@ -1451,8 +1457,8 @@ class HotelAvailabilityCalendarTests(BaseHotelTestCase):
         for user in users:
             self.auth(user)
             payload = {"hotel_id": hotel.id, "check_in": "2026-12-10", "check_out": "2026-12-12", "guests": 1}
-            self.client.post("/api/hotels/hotel-reservations/", payload, format="json")
+            self.client.post("/api/hotels/reservation/", payload, format="json")
         # Fourth user should fail
         self.auth(self.create_user(email="user4@test.com"))
-        response = self.client.post("/api/hotels/hotel-reservations/", {"hotel_id": hotel.id, "check_in": "2026-12-10", "check_out": "2026-12-12", "guests": 1}, format="json")
+        response = self.client.post("/api/hotels/reservation/", {"hotel_id": hotel.id, "check_in": "2026-12-10", "check_out": "2026-12-12", "guests": 1}, format="json")
         self.assertIn(response.status_code, [400, 409])

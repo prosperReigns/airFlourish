@@ -15,9 +15,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .throttles import IPRateThrottle
+from app.security.throttles import LoginThrottle
 from .authentication import BLACKLIST_PREFIX
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -48,12 +49,6 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]  # Allow anyone to register
     throttle_classes = [IPRateThrottle, AnonRateThrottle]
-
-class LoginThrottle(UserRateThrottle):
-    """Custom throttle for login attempts to prevent brute-force attacks.
-    This throttle limits login attempts to 5 per minute per user and 30 per minute per IP address.
-    """
-    rate = "5/minute"
 
 @method_decorator(
     name="post",

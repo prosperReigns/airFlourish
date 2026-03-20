@@ -1,75 +1,132 @@
 from django.db import models
-from app.bookings.models import Booking
 from django.conf import settings
-class TransportService(models.Model):
+
+class Trip(models.Model):
+    STATUS_CHOICES = (
+        ("scheduled", "Scheduled"),
+        ("assigned", "Assigned"),
+        ("en_route", "En Route"),
+        ("arrived", "Arrived"),
+        ("completed", "Completed"),
+        ("cancelled", "Cancelled"),
+    )
+
+    name = models.CharField(max_length=150)
+    organization = models.CharField(max_length=150, null=True, blank=True)
+
+    pickup_location = models.CharField(max_length=255)
+    dropoff_location = models.CharField(max_length=255)
+
+    departure_time = models.DateTimeField()
+    arrival_time = models.DateTimeField(null=True, blank=True)
+
+    # Flight awareness
+    flight_number = models.CharField(max_length=50, null=True, blank=True)
+    airline = models.CharField(max_length=100, null=True, blank=True)
+    expected_arrival_time = models.DateTimeField(null=True, blank=True)
+
+    # Capacity logic
+    capacity = models.PositiveIntegerField()
+    booked_seats = models.PositiveIntegerField(default=0)
+
+    # Shared vs private
+    is_shared = models.BooleanField(default=True)
+    price_per_seat = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=10, default="NGN")
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="scheduled")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def has_capacity(self, seats):
+        return (self.booked_seats + seats) <= self.capacity
+
+    def __str__(self):
+        return f"{self.name} ({self.pickup_location} → {self.dropoff_location})"
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=["departure_time"]),
+            models.Index(fields=["status"]),
+        ]
+        models.CheckConstraint(
+            condition=models.Q(capacity__gte=1),
+            name="capacity_gte_1"
+        )
+    
+class Vehicle(models.Model):
     VEHICLE_TYPES = (
         ("sedan", "Sedan"),
         ("suv", "SUV"),
         ("van", "Van"),
         ("bus", "Bus"),
-        ("luxury", "Luxury Vehicle"),
-        ("car_rental", "Car Rental"),
+        ("luxury", "Luxury"),
     )
 
-    # Admin-created transport service
     vehicle_type = models.CharField(max_length=50, choices=VEHICLE_TYPES)
-    transport_name = models.CharField(max_length=150)
-    pickup_location = models.CharField(max_length=200)
-    dropoff_location = models.CharField(max_length=200)
-    price_per_passenger = models.DecimalField(max_digits=10, decimal_places=2)
-    currency = models.CharField(max_length=10, default="NGN")
-    created_at = models.DateTimeField(auto_now_add=True)
+    plate_number = models.CharField(max_length=50, unique=True)
+    capacity = models.PositiveIntegerField()
+    provider = models.CharField(max_length=150)
 
-    # Booking link (set when a user books)
-    booking = models.OneToOneField(
-        Booking,
-        on_delete=models.CASCADE,
-        related_name="transport_details",
-        blank=True,
-        null=True
+    status = models.CharField(
+        max_length=20,
+        choices=(("available", "Available"), ("assigned", "Assigned"), ("maintenance", "Maintenance")),
+        default="available"
     )
-
-    passengers = models.IntegerField(default=1)
-    special_requests = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.transport_name} ({self.vehicle_type})"
+        return f"{self.plate_number} ({self.vehicle_type})"
+    
+class TripAssignment(models.Model):
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="assignments")
+    vehicle = models.ForeignKey(Vehicle, on_delete=models.CASCADE)
+    driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
-class TransportReservation(models.Model):
-    """
-    Represents a user's reservation of a transport service.
-    Each reservation is linked to a TransportService and optionally a Booking.
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
-    """
-    service = models.ForeignKey(
-        TransportService,
-        on_delete=models.CASCADE,
-        related_name="reservations"
+    status = models.CharField(
+        max_length=20,
+        choices=(("assigned", "Assigned"), ("active", "Active"), ("completed", "Completed")),
+        default="assigned"
     )
-    booking = models.ForeignKey(
-        Booking,
-        on_delete=models.CASCADE,
-        related_name="transport_reservations",
-        blank=True,
-        null=True
-    )
-    reserved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="transport_reservations"
-    )
-    passengers_count = models.PositiveIntegerField(default=1)
-    special_requests = models.TextField(blank=True, null=True)
-    reserved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("trip", "vehicle")
+
+class TransportBooking(models.Model):
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="bookings")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
+    passengers = models.PositiveIntegerField(default=1)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    organization = models.CharField(max_length=150, null=True, blank=True)
+
     status = models.CharField(
         max_length=20,
         choices=(
             ("pending", "Pending"),
             ("confirmed", "Confirmed"),
-            ("cancelled", "Cancelled")
+            ("checked_in", "Checked In"),
+            ("completed", "Completed"),
+            ("cancelled", "Cancelled"),
         ),
         default="pending"
     )
-
-    def __str__(self):
-        return f"Reservation {self.id} - {self.service.transport_name} ({self.status})"
+    reference = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    class Meta:
+        unique_together = ("trip", "user")
+        indexes = [
+            models.Index(fields=["trip"]),
+            models.Index(fields=["user"]),
+            models.Index(fields=["status"]),
+        ]
+        models.CheckConstraint(
+            condition=models.Q(passengers__gte=1),
+            name="passengers_gte_1"
+        )

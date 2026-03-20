@@ -19,6 +19,13 @@ _FW_PATCH = patch(
 )
 
 
+def _data(response):
+    data = _data(response)
+    if hasattr(data, "get"):
+        return data.get("results", data)
+    return data
+
+
 def setUpModule():
     _FW_PATCH.start()
 
@@ -65,7 +72,7 @@ class TransportFlowTests(TestCase):
         response = self.client.get("/api/transport/transport-options/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(_data(response)), 2)
 
     def test_user_can_book_transport(self):
         transport = TransportService.objects.create(
@@ -133,8 +140,8 @@ class TransportFlowTests(TestCase):
         response = self.client.get("/api/transport-search/?pickup=Lagos&dropoff=Island&vehicle_type=sedan")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["transport_name"], "Airport Sedan")
+        self.assertEqual(len(_data(response)), 1)
+        self.assertEqual(_data(response)[0]["transport_name"], "Airport Sedan")
 
 class AdminTransportFlowTests(TestCase):
     def setUp(self):
@@ -198,8 +205,8 @@ class TransportSearchTests(TestCase):
         response = self.client.get("/api/transport-search/?pickup=Lagos&dropoff=Island&vehicle_type=sedan")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["transport_name"], "Airport Sedan")
+        self.assertEqual(len(_data(response)), 1)
+        self.assertEqual(_data(response)[0]["transport_name"], "Airport Sedan")
 
 class AdminTransportSearchTests(TestCase):
     def setUp(self):
@@ -233,8 +240,8 @@ class AdminTransportSearchTests(TestCase):
         response = self.client.get("/api/transport-search/?pickup=Lagos&dropoff=Island&vehicle_type=sedan")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["transport_name"], "Airport Sedan")
+        self.assertEqual(len(_data(response)), 1)
+        self.assertEqual(_data(response)[0]["transport_name"], "Airport Sedan")
 
 class TransportBookingTests(TestCase):
     def setUp(self):
@@ -346,7 +353,7 @@ class TransportListTests(TestCase):
         response = self.client.get("/api/transport/transport-options/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(_data(response)), 2)
 
 class AdminTransportListTests(TestCase):
     def setUp(self):
@@ -364,7 +371,7 @@ class AdminTransportListTests(TestCase):
         response = self.client.get("/api/transport/transport-options/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(_data(response)), 2)
 
 class TransportDetailTests(TestCase):
     def setUp(self):
@@ -389,11 +396,11 @@ class TransportDetailTests(TestCase):
         response = self.client.get(f"/api/transport/transport-options/{self.transport.id}/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["transport_name"], "Airport Sedan")
-        self.assertEqual(response.data["pickup_location"], "Lagos")
-        self.assertEqual(response.data["dropoff_location"], "Island")
-        self.assertEqual(response.data["price_per_passenger"], "50.00")
-        self.assertEqual(response.data["currency"], "NGN")
+        self.assertEqual(_data(response)["transport_name"], "Airport Sedan")
+        self.assertEqual(_data(response)["pickup_location"], "Lagos")
+        self.assertEqual(_data(response)["dropoff_location"], "Island")
+        self.assertEqual(_data(response)["price_per_passenger"], "50.00")
+        self.assertEqual(_data(response)["currency"], "NGN")
 
 class AdminTransportDetailTests(TestCase):
     def setUp(self):
@@ -419,11 +426,11 @@ class AdminTransportDetailTests(TestCase):
         response = self.client.get(f"/api/transport/transport-options/{self.transport.id}/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["transport_name"], "Airport Sedan")
-        self.assertEqual(response.data["pickup_location"], "Lagos")
-        self.assertEqual(response.data["dropoff_location"], "Island")
-        self.assertEqual(response.data["price_per_passenger"], "50.00")
-        self.assertEqual(response.data["currency"], "NGN")
+        self.assertEqual(_data(response)["transport_name"], "Airport Sedan")
+        self.assertEqual(_data(response)["pickup_location"], "Lagos")
+        self.assertEqual(_data(response)["dropoff_location"], "Island")
+        self.assertEqual(_data(response)["price_per_passenger"], "50.00")
+        self.assertEqual(_data(response)["currency"], "NGN")
 
 
 class TransportModelTests(TestCase):
@@ -863,7 +870,7 @@ class TransportSearchEdgeTests(TestCase):
     def test_search_no_results(self):
         response = self.client.get("/api/transport-search/?pickup=Paris")
 
-        self.assertEqual(len(response.data), 0)
+        self.assertEqual(len(_data(response)), 0)
 
     def test_search_partial_pickup(self):
         TransportService.objects.create(
@@ -876,7 +883,7 @@ class TransportSearchEdgeTests(TestCase):
 
         response = self.client.get("/api/transport-search/?pickup=Lagos")
 
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_data(response)), 1)
 
     def test_search_vehicle_type_filter(self):
         TransportService.objects.create(
@@ -889,7 +896,7 @@ class TransportSearchEdgeTests(TestCase):
 
         response = self.client.get("/api/transport-search/?vehicle_type=suv")
 
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_data(response)), 1)
 
     def test_search_multiple_filters(self):
         TransportService.objects.create(
@@ -904,7 +911,7 @@ class TransportSearchEdgeTests(TestCase):
             "/api/transport-search/?pickup=Lagos&vehicle_type=suv"
         )
 
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_data(response)), 1)
 
     def test_search_case_insensitive(self):
         TransportService.objects.create(
@@ -917,7 +924,7 @@ class TransportSearchEdgeTests(TestCase):
 
         response = self.client.get("/api/transport-search/?pickup=lagos")
 
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(len(_data(response)), 1)
 
 class TransportBookingOwnershipTests(TestCase):
 
@@ -959,7 +966,7 @@ class TransportBookingOwnershipTests(TestCase):
 
         response = self.client.get("/api/transport-bookings/")
 
-        self.assertEqual(len(response.data), 0)
+        self.assertEqual(len(_data(response)), 0)
 
     def test_user_cannot_access_others_booking(self):
 
@@ -1106,8 +1113,8 @@ class TransportFlowTests(BaseTransportTestCase):
     def test_user_can_list_transports(self):
         response = self.client.get("/api/transport/transports/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Test Flight")
+        self.assertEqual(len(_data(response)), 1)
+        self.assertEqual(_data(response)[0]["name"], "Test Flight")
 
     def test_user_can_book_transport(self):
         payload = {"transport_id": self.transport.id, "passengers": 2}
@@ -1233,13 +1240,13 @@ class TransportAccessTests(BaseTransportTestCase):
     def test_user_sees_only_own_reservations(self):
         self.auth(self.user)
         response = self.client.get("/api/transport/transport-reservations/")
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], self.user_reservation.id)
+        self.assertEqual(len(_data(response)), 1)
+        self.assertEqual(_data(response)[0]["id"], self.user_reservation.id)
 
     def test_admin_sees_all_reservations(self):
         self.auth(self.admin)
         response = self.client.get("/api/transport/transport-reservations/")
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(_data(response)), 2)
 
     def test_user_cannot_retrieve_other_reservation(self):
         self.auth(self.user)

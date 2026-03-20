@@ -16,7 +16,7 @@ class SearchLogModelTests(TestCase):
         log = SearchLog.objects.create(
             user=None,
             ip_address="127.0.0.1",
-            endpoint="/api/flights/search/",
+            endpoint="/api/flights/search-flights/",
         )
         self.assertIsNone(log.user)
 
@@ -24,9 +24,9 @@ class SearchLogModelTests(TestCase):
         log = SearchLog.objects.create(
             user=self.user,
             ip_address="127.0.0.1",
-            endpoint="/api/hotels/search/",
+            endpoint="/api/hotels/",
         )
-        self.assertEqual(log.endpoint, "/api/hotels/search/")
+        self.assertEqual(log.endpoint, "/api/hotels/")
 
     def test_ip_address_saved(self):
         log = SearchLog.objects.create(
@@ -40,6 +40,6 @@ class SearchLogModelTests(TestCase):
         log = SearchLog.objects.create(
             user=self.user,
             ip_address="10.0.0.2",
-            endpoint="/api/visa/search/",
+            endpoint="/api/visas/visa-types/",
         )
         self.assertIsNotNone(log.created_at)

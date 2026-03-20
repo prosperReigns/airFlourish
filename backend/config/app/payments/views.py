@@ -20,6 +20,7 @@ from app.transactions.services import get_or_create_transaction, mark_transactio
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from app.users.permissions import IsAdminUserType
+from app.security.throttles import PaymentThrottle
 
 
 def _signature_to_bytes(value):
@@ -307,6 +308,7 @@ class CardPaymentInitView(APIView):
     }
     """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [PaymentThrottle]
 
     @transaction.atomic
     @swagger_auto_schema(operation_description="Initiate a card payment for a booking.",
@@ -429,6 +431,7 @@ class BankTransferInitView(APIView):
     }
     """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [PaymentThrottle]
 
     @transaction.atomic
     @swagger_auto_schema(operation_description="Initiate a bank transfer payment for a booking.",
@@ -577,6 +580,7 @@ class PaymentVerificationView(APIView):
     }
     """
     permission_classes = [IsAuthenticated]
+    throttle_classes = [PaymentThrottle]
 
     @transaction.atomic
     @swagger_auto_schema(operation_description="Verify a payment by tx_ref.",

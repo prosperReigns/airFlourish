@@ -63,6 +63,12 @@ class BasePaymentTestCase(TestCase):
             currency="NGN",
         )
 
+    def _data(self, response):
+        data = self._data(response)
+        if hasattr(data, "get"):
+            return data.get("results", data)
+        return data
+
     def create_payment(
         self,
         booking=None,
@@ -205,14 +211,14 @@ class PaymentViewSetListRetrieveTests(BasePaymentTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(PAYMENTS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["id"], str(self.user_payment.id))
+        self.assertEqual(len(self._data(response)), 1)
+        self.assertEqual(self._data(response)[0]["id"], str(self.user_payment.id))
 
     def test_admin_user_sees_all_payments(self):
         self.client.force_authenticate(self.admin)
         response = self.client.get(PAYMENTS_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(self._data(response)), 2)
 
     def test_regular_user_cannot_retrieve_other_payment(self):
         self.client.force_authenticate(self.user)
@@ -258,7 +264,7 @@ class PaymentViewSetCreateUpdateDeleteTests(BasePaymentTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("payment_method", response.data)
+        self.assertIn("payment_method", self._data(response))
 
     def test_user_can_update_own_payment(self):
         payment = self.create_payment()
@@ -346,7 +352,7 @@ class CardPaymentInitViewTests(BasePaymentTestCase):
             HTTP_IDEMPOTENCY_KEY="idem-card-002",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["id"], str(existing.id))
+        self.assertEqual(self._data(response)["id"], str(existing.id))
         mock_initiate.assert_not_called()
 
     @patch("app.payments.views.FlutterwaveService.initiate_card_payment")
@@ -371,9 +377,9 @@ class CardPaymentInitViewTests(BasePaymentTestCase):
             HTTP_X_TRACE_ID="trace-123",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("payment", response.data)
-        self.assertIn("gateway", response.data)
-        payment = Payment.objects.get(id=response.data["payment"]["id"])
+        self.assertIn("payment", self._data(response))
+        self.assertIn("gateway", self._data(response))
+        payment = Payment.objects.get(id=self._data(response)["payment"]["id"])
         self.assertEqual(payment.payment_method, "card")
         self.assertEqual(payment.idempotency_key, "idem-card-003")
         self.assertEqual(payment.trace_id, "trace-123")
@@ -438,10 +444,10 @@ class BankTransferInitViewTests(BasePaymentTestCase):
             HTTP_IDEMPOTENCY_KEY="idem-bank-001",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("payment", response.data)
-        self.assertIn("bank_details", response.data)
-        self.assertEqual(response.data["bank_details"]["bank_name"], "Test Bank")
-        payment = Payment.objects.get(id=response.data["payment"]["id"])
+        self.assertIn("payment", self._data(response))
+        self.assertIn("bank_details", self._data(response))
+        self.assertEqual(self._data(response)["bank_details"]["bank_name"], "Test Bank")
+        payment = Payment.objects.get(id=self._data(response)["payment"]["id"])
         self.assertEqual(payment.payment_method, "bank_transfer")
 
     @override_settings(
@@ -459,7 +465,7 @@ class BankTransferInitViewTests(BasePaymentTestCase):
             HTTP_IDEMPOTENCY_KEY="idem-bank-002",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        payment = Payment.objects.get(id=response.data["payment"]["id"])
+        payment = Payment.objects.get(id=self._data(response)["payment"]["id"])
         self.assertEqual(payment.currency, "NGN")
 
 
@@ -500,7 +506,7 @@ class FlutterwaveWebhookTests(BasePaymentTestCase):
             HTTP_VERIF_HASH=settings.FLUTTERWAVE_SECRET_HASH,
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["message"], "Already processed")
+        self.assertEqual(self._data(response)["message"], "Already processed")
 
     @patch("app.payments.views.process_successful_payment.delay")
     @patch("app.payments.views.BookingEngine.attach_payment")
@@ -574,7 +580,7 @@ class PaymentVerificationTests(BasePaymentTestCase):
             VERIFY_URL, data={"tx_ref": payment.tx_ref}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["message"], "Already verified")
+        self.assertEqual(self._data(response)["message"], "Already verified")
         mock_verify.assert_not_called()
 
     @patch("app.payments.views.FlutterwaveService.verify_payment")
@@ -1239,7 +1245,7 @@ class PaymentAdvancedEdgeTests(BasePaymentTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(f"{PAYMENTS_URL}?status=succeeded")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        for payment_data in response.data:
+        for payment_data in self._data(response):
             self.assertEqual(payment_data["status"], "succeeded")
 
     # ---------------------------
@@ -1251,7 +1257,7 @@ class PaymentAdvancedEdgeTests(BasePaymentTestCase):
         self.client.force_authenticate(self.user)
         response = self.client.get(f"{PAYMENTS_URL}?payment_method=card")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        for payment_data in response.data:
+        for payment_data in self._data(response):
             self.assertEqual(payment_data["payment_method"], "card")
 
     # ---------------------------

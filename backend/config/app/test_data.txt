@@ -282,46 +282,32 @@ Response:
 {
   "country": "NG",
   "visa_types": [
-    {"id": 1, "code": "tourist", "name": "Tourist", "country": "NG", "description": "", "price": 200.00, "required_documents": ["passport"], "processing_days": 7, "is_active": true},
-    {"id": 2, "code": "business", "name": "Business", "country": "NG", "description": "", "price": 350.00, "required_documents": ["passport", "bank_statement"], "processing_days": 10, "is_active": true}
+    {"id": 1, "code": "tourist", "name": "Tourist", "country": "NG", "description": ""},
+    {"id": 2, "code": "business", "name": "Business", "country": "NG", "description": ""}
   ]
 }
 GET /api/visas/visa-types/?country=NG&ordering=-created_at&page=1&page_size=10
 
-GET /api/visas/visa-types/?country=US
+GET /api/visas/visa-types/?country=US -- working
 Response:
 {
   "country": "US",
   "visa_types": [
-    {"id": 10, "code": "tourist_us", "name": "Tourist", "country": "US", "description": "US tourist visa", "price": 160.00, "required_documents": ["passport"], "processing_days": 14, "is_active": true}
+    {"id": 10, "code": "tourist_us", "name": "Tourist", "country": "US", "description": "US tourist visa"}
   ]
 }
 POST /api/visas/applications/
 {
   "visa_type": "tourist"
 }
-POST /api/visas/applications/
-{
-  "visa_type": 2
-}
-POST /api/visas/applications/
-{
-  "visa_type": {"code": "tourist"}
-}
 PATCH /api/visas/applications/{id}/
 {
-  "visa_type": "business"
+  "visa_type": "Business"
 }
 POST /api/visas/applications/{id}/documents/
 Content-Type: multipart/form-data
 {
   "document_type": "passport",
-  "file": "<file>"
-}
-POST /api/visas/applications/{id}/documents/
-Content-Type: multipart/form-data
-{
-  "document_type": "bank_statement",
   "file": "<file>"
 }
 POST /api/visas/applications/{id}/validate/
@@ -354,10 +340,8 @@ POST /api/visas/admin/visa-types/
   "name": "Tourist",
   "country": "NG",
   "description": "Tourist visa for short stays",
-  "price": 200.00,
-  "required_documents": ["passport"],
-  "processing_days": 7,
-  "is_active": true
+  "is_active": true,
+  "price": 1500
 }
 GET /api/visas/admin/visa-types/{id}/
 PUT /api/visas/admin/visa-types/{id}/
@@ -366,9 +350,6 @@ PUT /api/visas/admin/visa-types/{id}/
   "name": "Business",
   "country": "NG",
   "description": "Business visa",
-  "price": 350.00,
-  "required_documents": ["passport", "bank_statement"],
-  "processing_days": 10,
   "is_active": true
 }
 PATCH /api/visas/admin/visa-types/{id}/
