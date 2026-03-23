@@ -304,6 +304,7 @@ PUT /api/visas/applications/{id}/
 }
 PATCH /api/visas/applications/{id}/
 {
+  "internal_notes": "checklist complete, waiting for documents"
   "visa_type": "business"
 }
 POST /api/visas/applications/{id}/documents/
