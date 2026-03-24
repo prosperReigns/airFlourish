@@ -260,7 +260,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
             amount=payment.amount,
             currency=payment.currency,
         )
-        mark_transaction_failed(transaction_obj, provider_response=payment.raw_response)
+        mark_transaction_failed(
+            transaction_obj, provider_response=verification_response
+        )
 
         return Response(
             {
