@@ -1,14 +1,16 @@
 from django.db import transaction
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils.decorators import method_decorator
 from django.core.cache import cache
 from rest_framework import permissions, status, viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.conf import settings
 from app.payments.models import Payment
+from app.users.permissions import IsAdminUserType
 
 from app.services.amadeus import AmadeusService
 from app.services.booking_engine import BookingEngine
@@ -21,8 +23,8 @@ from app.transactions.services import (
     mark_transaction_failed,
     mark_transaction_success,
 )
-from .models import FlightBooking
-from .serializers import FlightBookingSerializer
+from .models import Airport, FlightBooking
+from .serializers import AirportSearchSerializer, AirportSerializer, FlightBookingSerializer
 from app.services.flight_transformer import simplify_flight_offers
 from app.services.amadeus_transformer import _extract_flight_details
 from app.services.helper_function import _convert_amount, _get_user_currency,_quantize_amount,_to_decimal
@@ -106,6 +108,12 @@ class FlightBookingViewSet(viewsets.ModelViewSet):
 
         # Return flights linked to bookings of the logged-in user
         return FlightBooking.objects.filter(booking__user=user)
+
+
+class AirportViewSet(viewsets.ModelViewSet):
+    queryset = Airport.objects.all()
+    serializer_class = AirportSerializer
+    permission_classes = [IsAuthenticated, IsAdminUserType]
 
 class FlightBookingCache:
     _offer_prefix = "flight_offer:"
@@ -494,3 +502,43 @@ class FlightSearchView(APIView):
             return paginator.get_paginated_response(page)
 
         return Response(simplified)
+
+
+class AirportSearchView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        query = (request.query_params.get("q") or "").strip()
+        if len(query) < 2:
+            return Response([])
+
+        normalized_query = query.lower()
+        cache_key = f"airport_search:{normalized_query}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        queryset = (
+            Airport.objects.only("code", "city", "name").filter(
+                Q(city__icontains=query)
+                | Q(name__icontains=query)
+                | Q(code__icontains=query)
+            )
+            .annotate(
+                relevance=Case(
+                    When(city__icontains=query, then=Value(0)),
+                    When(name__icontains=query, then=Value(1)),
+                    When(code__icontains=query, then=Value(2)),
+                    default=Value(3),
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by("relevance", "city", "name")
+        )
+
+        limit = getattr(settings, "AIRPORT_SEARCH_LIMIT", 20)
+        results = queryset[:limit]
+        data = AirportSearchSerializer(results, many=True).data
+        cache_timeout = getattr(settings, "AIRPORT_SEARCH_CACHE_TTL", 600)
+        cache.set(cache_key, data, timeout=cache_timeout)
+        return Response(data)

@@ -1,6 +1,17 @@
 from django.db import models
 from app.bookings.models import Booking
 
+
+class Airport(models.Model):
+    code = models.CharField(max_length=10, unique=True, db_index=True)
+    city = models.CharField(max_length=100, db_index=True)
+    name = models.CharField(max_length=255, db_index=True)
+    country = models.CharField(max_length=100)
+
+    def __str__(self):
+        return f"{self.city} ({self.code})"
+
+
 class FlightBooking(models.Model):
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE)
     departure_city = models.CharField(max_length=100)
