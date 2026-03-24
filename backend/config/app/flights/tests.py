@@ -15,7 +15,7 @@ from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
 from app.bookings.models import Booking
-from app.flights.models import FlightBooking
+from app.flights.models import Airport, FlightBooking
 from app.flights.serializers import FlightBookingSerializer
 from app.payments.models import Payment
 from app.services.booking_engine import BookingEngine
@@ -24,6 +24,8 @@ FLIGHT_BOOKINGS_URL = "/api/flights/flights/"
 SECURE_BOOK_URL = "/api/flights/secure-book/"
 VERIFY_PAYMENT_URL = "/api/flights/verify-payment/"
 FLIGHT_SEARCH_URL = "/api/bookings/flights/search/"
+AIRPORT_SEARCH_URL = "/api/airports/search/"
+ADMIN_AIRPORTS_URL = "/api/admin/airports/"
 
 
 def throttled_settings(rate):
@@ -1554,3 +1556,63 @@ class ConcurrentPaymentVerificationTest(APITestCase):
 
         # ensure at least one success response
         self.assertIn(status.HTTP_201_CREATED, responses)
+
+
+class AirportSearchTests(BaseFlightTestCase):
+    def setUp(self):
+        super().setUp()
+        Airport.objects.create(
+            code="LOS",
+            city="Lagos",
+            name="Murtala Muhammed International Airport",
+            country="Nigeria",
+        )
+        Airport.objects.create(
+            code="LGA",
+            city="New York",
+            name="LaGuardia Airport",
+            country="United States",
+        )
+        Airport.objects.create(
+            code="ABC",
+            city="Test City",
+            name="Lagos Regional Airfield",
+            country="Testland",
+        )
+
+    def test_search_requires_minimum_length(self):
+        response = self.client.get(AIRPORT_SEARCH_URL, data={"q": "l"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json(), [])
+
+    def test_search_orders_city_match_first(self):
+        response = self.client.get(AIRPORT_SEARCH_URL, data={"q": "lag"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertGreaterEqual(len(data), 2)
+        self.assertEqual(
+            data[0]["label"],
+            "Lagos - Murtala Muhammed International Airport",
+        )
+        self.assertEqual(data[0]["value"], "LOS")
+
+
+class AirportAdminViewSetTests(BaseFlightTestCase):
+    def test_admin_airport_list_requires_auth(self):
+        response = self.client.get(ADMIN_AIRPORTS_URL)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_admin_can_create_airport(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            ADMIN_AIRPORTS_URL,
+            data={
+                "code": "CDG",
+                "city": "Paris",
+                "name": "Charles de Gaulle Airport",
+                "country": "France",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Airport.objects.filter(code="CDG").exists())

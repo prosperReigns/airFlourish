@@ -187,6 +187,8 @@ BANK_TRANSFER_SUPPORTED_CURRENCIES = ["NGN", "GHS"]
 # Cache settings (flight search/payment context)
 FLIGHT_OFFER_CACHE_TTL = 60 * 60  # 1 hour
 FLIGHT_PAYMENT_CONTEXT_TTL = 6 * 60 * 60  # 6 hours
+AIRPORT_SEARCH_CACHE_TTL = 10 * 60  # 10 minutes
+AIRPORT_SEARCH_LIMIT = 20
 
 # Idempotency + hotel reservation holds
 IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60

@@ -17,6 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from app.users.views import CustomTokenObtainPairView
+from app.flights.views import AirportSearchView, AirportViewSet
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -27,6 +28,7 @@ from django.urls import path, re_path, include
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
+from rest_framework.routers import DefaultRouter
 
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns 
 
@@ -61,6 +63,9 @@ schema_view = get_schema_view(
    permission_classes=[permissions.AllowAny],
 )
 
+router = DefaultRouter()
+router.register(r"admin/airports", AirportViewSet, basename="admin-airports")
+
 urlpatterns = [
     path('admin/', admin.site.urls),
 
@@ -81,6 +86,9 @@ urlpatterns = [
     #jwt
     path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+
+    path("api/airports/search/", AirportSearchView.as_view(), name="airport-search"),
+    path("api/", include(router.urls)),
 
     # Swagger documentation
     re_path(r'^swagger(?P<format>\.json|\.yaml)$',
