@@ -408,6 +408,11 @@ POST /api/payments/verify/
   "tx_ref": "TX-CARD-123"
 }
 
+POST /api/payments/payments/verify-universal/ (admin only)
+{
+  "tx_ref": "TX-CARD-123"
+}
+
 11. Public payment callbacks
 POST /api/payments/webhook/flutterwave/ (public)
 Headers: verif-hash: <flutterwave_secret_hash>

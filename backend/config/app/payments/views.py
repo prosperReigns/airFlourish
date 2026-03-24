@@ -154,6 +154,124 @@ class PaymentViewSet(viewsets.ModelViewSet):
             status=200,
         )
 
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="verify-universal",
+        permission_classes=[IsAuthenticated, IsAdminUserType],
+    )
+    @swagger_auto_schema(
+        operation_description="Verify any payment by tx_ref (admin only).",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["tx_ref"],
+            properties={
+                "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
+            },
+        ),
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "message": openapi.Schema(type=openapi.TYPE_STRING),
+                    "payment": openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            "id": openapi.Schema(type=openapi.TYPE_INTEGER),
+                            "booking": openapi.Schema(type=openapi.TYPE_INTEGER),
+                            "amount": openapi.Schema(
+                                type=openapi.TYPE_NUMBER, format="float"
+                            ),
+                            "currency": openapi.Schema(type=openapi.TYPE_STRING),
+                            "payment_method": openapi.Schema(type=openapi.TYPE_STRING),
+                            "tx_ref": openapi.Schema(type=openapi.TYPE_STRING),
+                            "status": openapi.Schema(type=openapi.TYPE_STRING),
+                            "paid_at": openapi.Schema(
+                                type=openapi.TYPE_STRING, format="date-time"
+                            ),
+                            "created_at": openapi.Schema(
+                                type=openapi.TYPE_STRING, format="date-time"
+                            ),
+                        },
+                    ),
+                },
+            ),
+            400: "Verification failed",
+            404: "Payment not found",
+        },
+    )
+    @transaction.atomic
+    def verify_universal(self, request):
+        tx_ref = request.data.get("tx_ref")
+
+        if not tx_ref:
+            return Response({"error": "tx_ref required"}, status=400)
+
+        try:
+            payment = Payment.objects.select_for_update().get(tx_ref=tx_ref)
+        except Payment.DoesNotExist:
+            return Response({"error": "Payment not found"}, status=404)
+
+        if payment.status == "succeeded":
+            return Response(
+                {
+                    "message": "Already verified",
+                    "payment": PaymentSerializer(payment).data,
+                }
+            )
+
+        verification_response = FlutterwaveService().verify_payment(tx_ref)
+        verification_result = PaymentVerificationService.apply_verification(
+            payment,
+            verification_response=verification_response,
+            source="api",
+            mark_failed_on_gateway_error=False,
+        )
+
+        if verification_result.gateway_error:
+            return Response(
+                {
+                    "error": "Verification failed",
+                    "gateway_response": verification_response,
+                },
+                status=400,
+            )
+
+        if verification_result.is_successful:
+            payment.refresh_from_db(fields=["status", "paid_at"])
+            BookingEngine.attach_payment(payment.booking, "confirmed")
+
+            transaction.on_commit(
+                lambda: process_successful_payment.delay(str(payment.id))
+            )
+
+            return Response(
+                {
+                    "message": "Payment verified successfully",
+                    "payment": PaymentSerializer(payment).data,
+                }
+            )
+
+        BookingEngine.update_status(payment.booking, "failed")
+
+        transaction_obj = get_or_create_transaction(
+            booking=payment.booking,
+            reference=payment.tx_ref,
+            amount=payment.amount,
+            currency=payment.currency,
+        )
+        mark_transaction_failed(
+            transaction_obj, provider_response=verification_response
+        )
+
+        return Response(
+            {
+                "error": "Payment verification failed",
+                "gateway_response": verification_response,
+            },
+            status=400,
+        )
+
 
 # --- Flutterwave Webhook ---
 #/payments/webhook/ - handle Flutterwave payment webhooks
