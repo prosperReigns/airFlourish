@@ -22,6 +22,7 @@ PAYMENTS_URL = "/api/payments/payments/"
 CARD_INIT_URL = "/api/payments/card/initiate/"
 BANK_INIT_URL = "/api/payments/bank-transfer/initiate/"
 VERIFY_URL = "/api/payments/verify/"
+VERIFY_UNIVERSAL_URL = "/api/payments/payments/verify-universal/"
 WEBHOOK_URL = "/api/payments/webhook/flutterwave/"
 REDIRECT_URL = "/api/payments/redirect/"
 
@@ -643,6 +644,69 @@ class PaymentVerificationTests(BasePaymentTestCase):
         self.assertEqual(payment.status, "failed")
         mock_update.assert_called_once_with(payment.booking, "failed")
 
+
+class PaymentUniversalVerificationTests(BasePaymentTestCase):
+    def test_universal_verification_requires_admin(self):
+        payment = self.create_payment(tx_ref="tx-universal-001")
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            VERIFY_UNIVERSAL_URL, data={"tx_ref": payment.tx_ref}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_universal_verification_requires_tx_ref(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(VERIFY_UNIVERSAL_URL, data={}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_universal_verification_payment_not_found(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            VERIFY_UNIVERSAL_URL, data={"tx_ref": "missing"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    @patch("app.payments.views.FlutterwaveService.verify_payment")
+    def test_universal_verification_already_verified(self, mock_verify):
+        payment = self.create_payment(status="succeeded", tx_ref="tx-universal-002")
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            VERIFY_UNIVERSAL_URL, data={"tx_ref": payment.tx_ref}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "Already verified")
+        mock_verify.assert_not_called()
+
+    @patch("app.payments.views.process_successful_payment.delay")
+    @patch("app.payments.views.BookingEngine.attach_payment")
+    @patch("app.payments.views.FlutterwaveService.verify_payment")
+    def test_universal_verification_successful_updates_payment(
+        self, mock_verify, mock_attach, mock_delay
+    ):
+        booking = self.create_booking(user=self.other_user)
+        payment = self.create_payment(
+            booking=booking, amount=Decimal("100.00"), tx_ref="tx-universal-003"
+        )
+        mock_verify.return_value = {
+            "status": "success",
+            "data": {
+                "id": 777,
+                "status": "successful",
+                "amount": "100.00",
+                "currency": "NGN",
+            },
+        }
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            VERIFY_UNIVERSAL_URL, data={"tx_ref": payment.tx_ref}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, "succeeded")
+        self.assertEqual(payment.flutterwave_charge_id, "777")
+        self.assertIsNotNone(payment.paid_at)
+        mock_attach.assert_called_once_with(payment.booking, "confirmed")
+        mock_delay.assert_called_once_with(str(payment.id))
 
 class PaymentVerificationServiceTests(BasePaymentTestCase):
     def test_webhook_verification_merges_payload(self):
