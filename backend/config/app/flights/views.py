@@ -512,7 +512,8 @@ class AirportSearchView(APIView):
         if len(query) < 2:
             return Response([])
 
-        normalized_query = query.lower()
+        search_term = query
+        normalized_query = search_term.lower()
         cache_key = f"airport_search:{normalized_query}"
         cached = cache.get(cache_key)
         if cached is not None:
@@ -520,15 +521,15 @@ class AirportSearchView(APIView):
 
         queryset = (
             Airport.objects.only("code", "city", "name").filter(
-                Q(city__icontains=query)
-                | Q(name__icontains=query)
-                | Q(code__icontains=query)
+                Q(city__icontains=search_term)
+                | Q(name__icontains=search_term)
+                | Q(code__icontains=search_term)
             )
             .annotate(
                 relevance=Case(
-                    When(city__icontains=query, then=Value(0)),
-                    When(name__icontains=query, then=Value(1)),
-                    When(code__icontains=query, then=Value(2)),
+                    When(city__icontains=search_term, then=Value(0)),
+                    When(name__icontains=search_term, then=Value(1)),
+                    When(code__icontains=search_term, then=Value(2)),
                     default=Value(3),
                     output_field=IntegerField(),
                 )
